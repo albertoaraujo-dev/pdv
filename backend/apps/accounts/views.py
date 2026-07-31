@@ -6,6 +6,7 @@ from django.middleware.csrf import get_token
 from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST
 
+from .models import LoginAttempt, is_login_locked, record_login_attempt
 from .policies import can_access_admin, can_access_pos, get_allowed_stores, get_user_profile
 
 
@@ -56,14 +57,22 @@ def login_view(request):
 
     username = payload.get("username", "")
     password = payload.get("password", "")
+
+    if is_login_locked(request, username):
+        record_login_attempt(request, username, LoginAttempt.Status.LOCKED, "Muitas tentativas inválidas.")
+        return JsonResponse({"detail": "Muitas tentativas inválidas. Tente novamente em alguns minutos."}, status=429)
+
     user = authenticate(request, username=username, password=password)
 
     if user is None:
+        record_login_attempt(request, username, LoginAttempt.Status.FAILED, "Credenciais inválidas.")
         return JsonResponse({"detail": "Usuário ou senha inválidos."}, status=400)
     if not user.is_active:
+        record_login_attempt(request, username, LoginAttempt.Status.FAILED, "Usuário inativo.")
         return JsonResponse({"detail": "Usuário inativo."}, status=403)
 
     login(request, user)
+    record_login_attempt(request, username, LoginAttempt.Status.SUCCESS, "Login realizado.")
     return JsonResponse(user_payload(user))
 
 

@@ -1,7 +1,10 @@
 from django.contrib.auth import get_user_model
+from django.contrib import admin
 from django.test import Client, RequestFactory, TestCase
 from django.urls import reverse
 
+from apps.accounts.admin import LoginAttemptAdmin
+from apps.accounts.models import LoginAttempt
 from apps.accounts.policies import can_access_admin, can_access_pos, get_allowed_stores, get_manageable_profiles, get_visible_stores
 from apps.tenants.models import Organization, Store, UserProfile, UserStoreAccess
 
@@ -125,6 +128,7 @@ class SessionAuthTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["detail"], "Usuário ou senha inválidos.")
+        self.assertEqual(LoginAttempt.objects.get().status, LoginAttempt.Status.FAILED)
 
     def test_login_returns_user_permissions_and_session(self):
         response = self.client.post(
@@ -138,10 +142,55 @@ class SessionAuthTests(TestCase):
         self.assertTrue(response.json()["permissions"]["can_access_admin"])
         self.assertEqual(response.json()["profile"]["role"], UserProfile.Role.MANAGER)
         self.assertIn("sessionid", self.client.cookies)
+        self.assertEqual(LoginAttempt.objects.get().status, LoginAttempt.Status.SUCCESS)
 
         me_response = self.client.get(reverse("accounts:me"))
         self.assertEqual(me_response.status_code, 200)
         self.assertEqual(me_response.json()["username"], "manager")
+
+    def test_login_locks_after_repeated_failures_by_username_and_ip(self):
+        token = self.csrf_token()
+        for _ in range(5):
+            response = self.client.post(
+                reverse("accounts:login"),
+                data={"username": "manager", "password": "wrong"},
+                content_type="application/json",
+                HTTP_X_CSRFTOKEN=token,
+            )
+            self.assertEqual(response.status_code, 400)
+
+        response = self.client.post(
+            reverse("accounts:login"),
+            data={"username": "manager", "password": "test-pass"},
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=token,
+        )
+
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(LoginAttempt.objects.filter(status=LoginAttempt.Status.FAILED).count(), 5)
+        self.assertEqual(LoginAttempt.objects.filter(status=LoginAttempt.Status.LOCKED).count(), 1)
+
+    def test_login_lockout_is_scoped_by_ip(self):
+        first_client = self.client
+        second_client = Client(enforce_csrf_checks=True, REMOTE_ADDR="10.0.0.2")
+        token = self.csrf_token()
+        for _ in range(5):
+            first_client.post(
+                reverse("accounts:login"),
+                data={"username": "manager", "password": "wrong"},
+                content_type="application/json",
+                HTTP_X_CSRFTOKEN=token,
+            )
+
+        csrf_response = second_client.get(reverse("accounts:csrf"))
+        response = second_client.post(
+            reverse("accounts:login"),
+            data={"username": "manager", "password": "test-pass"},
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=csrf_response.json()["csrfToken"],
+        )
+
+        self.assertEqual(response.status_code, 200)
 
     def test_logout_invalidates_session(self):
         self.client.login(username="manager", password="test-pass")
@@ -171,3 +220,47 @@ class AdminSitePolicyTests(TestCase):
 
         self.assertTrue(admin.site.has_permission(self.request_for(manager)))
         self.assertFalse(admin.site.has_permission(self.request_for(operator)))
+
+    def test_only_superuser_sees_login_attempts_admin(self):
+        model_admin = LoginAttemptAdmin(LoginAttempt, admin.site)
+        superuser = get_user_model().objects.create_superuser(username="root", password="test-pass")
+        manager = get_user_model().objects.create_user(username="manager", password="test-pass", is_staff=True)
+        UserProfile.objects.create(user=manager, organization=self.organization, role=UserProfile.Role.MANAGER)
+
+        self.assertTrue(model_admin.has_module_permission(self.request_for(superuser)))
+        self.assertFalse(model_admin.has_module_permission(self.request_for(manager)))
+
+
+class AdminLoginAuditTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.organization = Organization.objects.create(name="Empresa")
+        self.manager = get_user_model().objects.create_user(username="manager", password="test-pass", is_staff=True)
+        UserProfile.objects.create(user=self.manager, organization=self.organization, role=UserProfile.Role.MANAGER)
+
+    def test_admin_login_records_success(self):
+        response = self.client.post(
+            reverse("admin:login"),
+            data={"username": "manager", "password": "test-pass", "next": "/admin/"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(LoginAttempt.objects.get().status, LoginAttempt.Status.SUCCESS)
+
+    def test_admin_login_locks_after_repeated_failures(self):
+        for _ in range(5):
+            response = self.client.post(
+                reverse("admin:login"),
+                data={"username": "manager", "password": "wrong", "next": "/admin/"},
+            )
+            self.assertEqual(response.status_code, 200)
+
+        response = self.client.post(
+            reverse("admin:login"),
+            data={"username": "manager", "password": "test-pass", "next": "/admin/"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Muitas tentativas inválidas", status_code=200)
+        self.assertEqual(LoginAttempt.objects.filter(status=LoginAttempt.Status.FAILED).count(), 5)
+        self.assertEqual(LoginAttempt.objects.filter(status=LoginAttempt.Status.LOCKED).count(), 1)
