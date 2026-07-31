@@ -16,6 +16,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "corsheaders",
     "rest_framework",
+    "apps.accounts.apps.AccountsConfig",
     "apps.tenants.apps.TenantsConfig",
     "apps.catalog.apps.CatalogConfig",
 ]

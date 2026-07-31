@@ -4,11 +4,20 @@ from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.contrib.auth.forms import UserCreationForm
 from django import forms
 
+from apps.accounts.policies import (
+    SUBORDINATE_ROLES,
+    get_allowed_stores,
+    get_manageable_profiles,
+    get_manageable_users,
+    get_user_organization,
+    get_visible_stores,
+    is_manager,
+)
+
 from .models import Organization, Store, UserProfile, UserStoreAccess
 
 
 User = get_user_model()
-SUBORDINATE_ROLES = (UserProfile.Role.OPERATOR, UserProfile.Role.CASHIER, UserProfile.Role.FISCAL)
 
 
 class ManagedUserCreationForm(UserCreationForm):
@@ -21,53 +30,6 @@ class ManagedUserCreationForm(UserCreationForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["role"].choices = [choice for choice in UserProfile.Role.choices if choice[0] in SUBORDINATE_ROLES]
-
-
-def get_user_profile(user):
-    if user.is_superuser:
-        return None
-    return getattr(user, "profile", None)
-
-
-def get_user_organization(user):
-    profile = get_user_profile(user)
-    return profile.organization if profile else None
-
-
-def is_manager(user):
-    profile = get_user_profile(user)
-    return bool(profile and profile.role == UserProfile.Role.MANAGER)
-
-
-def get_allowed_stores(user):
-    profile = get_user_profile(user)
-    if not profile:
-        return Store.objects.none()
-    if profile.role == UserProfile.Role.MANAGER:
-        return Store.objects.filter(user_accesses__profile=profile, user_accesses__is_active=True)
-    return Store.objects.filter(organization=profile.organization)
-
-
-def get_manageable_profiles(user):
-    profile = get_user_profile(user)
-    if not profile:
-        return UserProfile.objects.none()
-    queryset = UserProfile.objects.filter(organization=profile.organization, user__is_superuser=False)
-    if profile.role == UserProfile.Role.MANAGER:
-        return queryset.filter(role__in=SUBORDINATE_ROLES)
-    if profile.role == UserProfile.Role.ADMIN:
-        return queryset
-    return UserProfile.objects.none()
-
-
-def get_manageable_users(user):
-    organization = get_user_organization(user)
-    if not organization:
-        return User.objects.none()
-    queryset = User.objects.filter(is_superuser=False, profile__organization=organization)
-    if is_manager(user):
-        return queryset.filter(profile__role__in=SUBORDINATE_ROLES)
-    return queryset
 
 
 class TenantScopedAdminMixin:
@@ -216,7 +178,12 @@ class StoreAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
         queryset = super().get_queryset(request)
         if request.user.is_superuser:
             return queryset
-        return queryset.filter(pk__in=get_allowed_stores(request.user))
+        return queryset.filter(pk__in=get_visible_stores(request.user))
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        if not request.user.is_superuser and not change and is_manager(request.user):
+            UserStoreAccess.objects.get_or_create(profile=request.user.profile, store=obj)
 
 
 @admin.register(UserProfile)

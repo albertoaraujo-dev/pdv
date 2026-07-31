@@ -71,6 +71,25 @@ class TenantAdminScopeTests(TestCase):
 
         self.assertEqual(list(queryset), [self.first_store])
 
+    def test_manager_still_sees_inactive_allowed_store_in_admin(self):
+        self.first_store.is_active = False
+        self.first_store.save(update_fields=["is_active"])
+        model_admin = StoreAdmin(Store, admin.site)
+
+        queryset = model_admin.get_queryset(self.request_for(self.manager))
+
+        self.assertEqual(list(queryset), [self.first_store])
+
+    def test_manager_gets_access_to_store_created_in_admin(self):
+        model_admin = StoreAdmin(Store, admin.site)
+        request = self.request_for(self.manager)
+        store = Store(organization=self.first_org, name="Nova loja", code="N01")
+
+        model_admin.save_model(request, store, form=None, change=False)
+
+        self.assertTrue(UserStoreAccess.objects.filter(profile=self.profile, store=store).exists())
+        self.assertIn(store, model_admin.get_queryset(request))
+
     def test_manager_does_not_see_admin_profiles(self):
         model_admin = UserProfileAdmin(UserProfile, admin.site)
 
