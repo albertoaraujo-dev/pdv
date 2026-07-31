@@ -6,6 +6,7 @@ from django import forms
 
 from apps.accounts.policies import (
     SUBORDINATE_ROLES,
+    can_access_admin,
     get_allowed_stores,
     get_manageable_profiles,
     get_manageable_users,
@@ -18,6 +19,13 @@ from .models import Organization, Store, UserProfile, UserStoreAccess
 
 
 User = get_user_model()
+
+
+def admin_has_permission(request):
+    return can_access_admin(request.user)
+
+
+admin.site.has_permission = admin_has_permission
 
 
 class ManagedUserCreationForm(UserCreationForm):

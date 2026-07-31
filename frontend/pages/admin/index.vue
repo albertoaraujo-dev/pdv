@@ -1,6 +1,9 @@
+<script setup lang="ts">
+definePageMeta({ middleware: 'admin-auth' })
+</script>
+
 <template>
   <main>
-    <h1>Painel Administrativo</h1>
-    <p>Area reservada para gestao.</p>
+    <h1>Redirecionando para o painel administrativo...</h1>
   </main>
 </template>

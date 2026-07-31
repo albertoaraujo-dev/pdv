@@ -4,8 +4,8 @@ from apps.tenants.models import Store, UserProfile
 
 
 ADMIN_ROLES = (UserProfile.Role.ADMIN, UserProfile.Role.MANAGER)
-OPERATIONAL_ROLES = (UserProfile.Role.OPERATOR, UserProfile.Role.CASHIER, UserProfile.Role.FISCAL)
-SUBORDINATE_ROLES = OPERATIONAL_ROLES
+OPERATIONAL_ROLES = (UserProfile.Role.MANAGER, UserProfile.Role.OPERATOR, UserProfile.Role.CASHIER, UserProfile.Role.FISCAL)
+SUBORDINATE_ROLES = (UserProfile.Role.OPERATOR, UserProfile.Role.CASHIER, UserProfile.Role.FISCAL)
 
 
 def get_user_profile(user):
