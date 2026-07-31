@@ -1,11 +1,12 @@
 export default defineNuxtRouteMiddleware(async (to) => {
-  if (import.meta.server) return
-
   const config = useRuntimeConfig()
+  const apiBase = import.meta.server ? config.apiBaseServer : config.public.apiBase
+  const headers = import.meta.server ? useRequestHeaders(['cookie']) : undefined
 
   try {
-    const user = await $fetch<{ permissions: { can_access_admin: boolean } }>(`${config.public.apiBase}/api/auth/me/`, {
-      credentials: 'include'
+    const user = await $fetch<{ permissions: { can_access_admin: boolean } }>(`${apiBase}/api/auth/me/`, {
+      credentials: 'include',
+      headers
     })
 
     if (!user.permissions.can_access_admin) {

@@ -199,6 +199,79 @@ class SessionAuthTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self.client.get(reverse("accounts:me")).status_code, 401)
 
+    def test_change_password_requires_authentication(self):
+        response = self.client.post(
+            reverse("accounts:change_password"),
+            data={"current_password": "test-pass", "new_password": "new-strong-pass-123", "new_password_confirm": "new-strong-pass-123"},
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=self.csrf_token(),
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_change_password_requires_csrf(self):
+        self.client.login(username="manager", password="test-pass")
+        response = self.client.post(
+            reverse("accounts:change_password"),
+            data={"current_password": "test-pass", "new_password": "new-strong-pass-123", "new_password_confirm": "new-strong-pass-123"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_change_password_rejects_wrong_current_password(self):
+        self.client.login(username="manager", password="test-pass")
+        response = self.client.post(
+            reverse("accounts:change_password"),
+            data={"current_password": "wrong", "new_password": "new-strong-pass-123", "new_password_confirm": "new-strong-pass-123"},
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=self.csrf_token(),
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["detail"], "Senha atual incorreta.")
+
+    def test_change_password_rejects_mismatched_confirmation(self):
+        self.client.login(username="manager", password="test-pass")
+        response = self.client.post(
+            reverse("accounts:change_password"),
+            data={"current_password": "test-pass", "new_password": "new-strong-pass-123", "new_password_confirm": "different-pass-123"},
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=self.csrf_token(),
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["detail"], "A confirmação da nova senha não confere.")
+
+    def test_change_password_rejects_weak_password(self):
+        self.client.login(username="manager", password="test-pass")
+        response = self.client.post(
+            reverse("accounts:change_password"),
+            data={"current_password": "test-pass", "new_password": "123", "new_password_confirm": "123"},
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=self.csrf_token(),
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_change_password_updates_password_and_keeps_session(self):
+        self.client.login(username="manager", password="test-pass")
+        response = self.client.post(
+            reverse("accounts:change_password"),
+            data={
+                "current_password": "test-pass",
+                "new_password": "new-strong-pass-123",
+                "new_password_confirm": "new-strong-pass-123",
+            },
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=self.csrf_token(),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.manager.refresh_from_db()
+        self.assertTrue(self.manager.check_password("new-strong-pass-123"))
+        self.assertEqual(self.client.get(reverse("accounts:me")).status_code, 200)
+
 
 class AdminSitePolicyTests(TestCase):
     def setUp(self):

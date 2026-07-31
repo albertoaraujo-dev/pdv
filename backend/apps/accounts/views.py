@@ -1,6 +1,8 @@
 import json
 
 from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth import password_validation, update_session_auth_hash
+from django.core.exceptions import ValidationError
 from django.http import JsonResponse
 from django.middleware.csrf import get_token
 from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
@@ -80,4 +82,35 @@ def login_view(request):
 @require_POST
 def logout_view(request):
     logout(request)
+    return JsonResponse({"status": "ok"})
+
+
+@csrf_protect
+@require_POST
+def change_password(request):
+    if not request.user.is_authenticated:
+        return JsonResponse({"detail": "Usuário não autenticado."}, status=401)
+
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"detail": "JSON inválido."}, status=400)
+
+    current_password = payload.get("current_password", "")
+    new_password = payload.get("new_password", "")
+    new_password_confirm = payload.get("new_password_confirm", "")
+
+    if not request.user.check_password(current_password):
+        return JsonResponse({"detail": "Senha atual incorreta."}, status=400)
+    if new_password != new_password_confirm:
+        return JsonResponse({"detail": "A confirmação da nova senha não confere."}, status=400)
+
+    try:
+        password_validation.validate_password(new_password, request.user)
+    except ValidationError as error:
+        return JsonResponse({"detail": " ".join(error.messages)}, status=400)
+
+    request.user.set_password(new_password)
+    request.user.save(update_fields=["password"])
+    update_session_auth_hash(request, request.user)
     return JsonResponse({"status": "ok"})

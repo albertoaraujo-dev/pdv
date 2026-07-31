@@ -4,14 +4,10 @@ export default defineNuxtRouteMiddleware(async (to) => {
   const headers = import.meta.server ? useRequestHeaders(['cookie']) : undefined
 
   try {
-    const user = await $fetch<{ permissions: { can_access_pos: boolean } }>(`${apiBase}/api/auth/me/`, {
+    await $fetch(`${apiBase}/api/auth/me/`, {
       credentials: 'include',
       headers
     })
-
-    if (!user.permissions.can_access_pos) {
-      return navigateTo(`/login?next=${encodeURIComponent(to.fullPath)}`)
-    }
   } catch {
     return navigateTo(`/login?next=${encodeURIComponent(to.fullPath)}`)
   }
