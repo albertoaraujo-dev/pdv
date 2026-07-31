@@ -147,6 +147,7 @@ class TenantAdminScopeTests(TestCase):
         self.assertFalse(user.is_superuser)
         self.assertEqual(user.profile.organization, self.first_org)
         self.assertEqual(user.profile.role, UserProfile.Role.OPERATOR)
+        self.assertTrue(user.profile.must_change_password)
 
     def test_manager_creation_form_includes_subordinate_role_choice(self):
         model_admin = UserAdmin(get_user_model(), admin.site)
@@ -171,6 +172,7 @@ class TenantAdminScopeTests(TestCase):
         model_admin.save_model(request, user, FormStub(), change=False)
 
         self.assertEqual(user.profile.role, UserProfile.Role.CASHIER)
+        self.assertTrue(user.profile.must_change_password)
 
     def test_manager_only_sees_store_accesses_from_subordinates(self):
         UserStoreAccess.objects.create(profile=self.admin_profile, store=self.first_store)

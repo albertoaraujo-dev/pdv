@@ -41,6 +41,15 @@ class AccessPolicyTests(TestCase):
 
         self.assertTrue(can_access_pos(user))
 
+    def test_pending_password_change_blocks_admin_and_pos_permissions(self):
+        user = self.create_user_with_profile("manager", UserProfile.Role.MANAGER, is_staff=True)
+        user.profile.must_change_password = True
+        user.profile.save(update_fields=["must_change_password"])
+        UserStoreAccess.objects.create(profile=user.profile, store=self.store)
+
+        self.assertFalse(can_access_admin(user))
+        self.assertFalse(can_access_pos(user))
+
     def test_operator_cannot_access_admin_even_if_active(self):
         user = self.create_user_with_profile("operator", UserProfile.Role.OPERATOR)
 
@@ -140,6 +149,7 @@ class SessionAuthTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()["permissions"]["can_access_admin"])
+        self.assertFalse(response.json()["permissions"]["must_change_password"])
         self.assertEqual(response.json()["profile"]["role"], UserProfile.Role.MANAGER)
         self.assertIn("sessionid", self.client.cookies)
         self.assertEqual(LoginAttempt.objects.get().status, LoginAttempt.Status.SUCCESS)
@@ -255,6 +265,8 @@ class SessionAuthTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_change_password_updates_password_and_keeps_session(self):
+        self.manager.profile.must_change_password = True
+        self.manager.profile.save(update_fields=["must_change_password"])
         self.client.login(username="manager", password="test-pass")
         response = self.client.post(
             reverse("accounts:change_password"),
@@ -269,7 +281,9 @@ class SessionAuthTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.manager.refresh_from_db()
+        self.manager.profile.refresh_from_db()
         self.assertTrue(self.manager.check_password("new-strong-pass-123"))
+        self.assertFalse(self.manager.profile.must_change_password)
         self.assertEqual(self.client.get(reverse("accounts:me")).status_code, 200)
 
 

@@ -11,6 +11,7 @@ type AuthUser = {
   permissions: {
     can_access_admin: boolean
     can_access_pos: boolean
+    must_change_password: boolean
   }
 }
 
@@ -43,6 +44,11 @@ async function submitLogin() {
     })
 
     const next = typeof route.query.next === 'string' ? route.query.next : null
+    if (user.permissions.must_change_password) {
+      await navigateTo('/alterar-senha')
+      return
+    }
+
     if (next?.startsWith('/admin')) {
       if (!user.permissions.can_access_admin) {
         errorMessage.value = 'Seu usuário não tem acesso ao painel administrativo.'

@@ -24,6 +24,11 @@ def has_active_profile(user):
     return bool(user and user.is_active and profile and profile.is_active and profile.organization.is_active)
 
 
+def must_change_password(user):
+    profile = get_user_profile(user)
+    return bool(profile and profile.must_change_password)
+
+
 def is_manager(user):
     profile = get_user_profile(user)
     return bool(profile and profile.role == UserProfile.Role.MANAGER)
@@ -35,7 +40,7 @@ def can_access_admin(user):
     if user.is_superuser:
         return True
     profile = get_user_profile(user)
-    return bool(user.is_staff and has_active_profile(user) and profile.role in ADMIN_ROLES)
+    return bool(user.is_staff and has_active_profile(user) and not must_change_password(user) and profile.role in ADMIN_ROLES)
 
 
 def get_allowed_stores(user):
@@ -58,7 +63,7 @@ def get_visible_stores(user):
 
 def can_access_pos(user):
     profile = get_user_profile(user)
-    return bool(has_active_profile(user) and profile.role in OPERATIONAL_ROLES and get_allowed_stores(user).exists())
+    return bool(has_active_profile(user) and not must_change_password(user) and profile.role in OPERATIONAL_ROLES and get_allowed_stores(user).exists())
 
 
 def get_manageable_profiles(user):

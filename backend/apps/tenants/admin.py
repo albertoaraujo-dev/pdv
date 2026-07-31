@@ -150,7 +150,7 @@ class UserAdmin(DjangoUserAdmin):
             role = form.cleaned_data.get("role", UserProfile.Role.OPERATOR) if form else UserProfile.Role.OPERATOR
             UserProfile.objects.get_or_create(
                 user=obj,
-                defaults={"organization": organization, "role": role},
+                defaults={"organization": organization, "role": role, "must_change_password": True},
             )
 
 
@@ -196,7 +196,7 @@ class StoreAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
 
 @admin.register(UserProfile)
 class UserProfileAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
-    list_display = ["user", "organization", "role", "is_active"]
+    list_display = ["user", "organization", "role", "must_change_password", "is_active"]
     list_filter = ["organization", "role", "is_active"]
     tenant_list_filter = ["role", "is_active"]
     search_fields = ["user__username", "user__email", "organization__name"]

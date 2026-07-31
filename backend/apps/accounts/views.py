@@ -9,7 +9,7 @@ from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST
 
 from .models import LoginAttempt, is_login_locked, record_login_attempt
-from .policies import can_access_admin, can_access_pos, get_allowed_stores, get_user_profile
+from .policies import can_access_admin, can_access_pos, get_allowed_stores, get_user_profile, must_change_password
 
 
 def user_payload(user):
@@ -28,6 +28,7 @@ def user_payload(user):
         "permissions": {
             "can_access_admin": can_access_admin(user),
             "can_access_pos": can_access_pos(user),
+            "must_change_password": must_change_password(user),
         },
         "stores": [
             {"id": store.id, "name": store.name, "code": store.code}
@@ -112,5 +113,9 @@ def change_password(request):
 
     request.user.set_password(new_password)
     request.user.save(update_fields=["password"])
+    profile = get_user_profile(request.user)
+    if profile and profile.must_change_password:
+        profile.must_change_password = False
+        profile.save(update_fields=["must_change_password"])
     update_session_auth_hash(request, request.user)
     return JsonResponse({"status": "ok"})

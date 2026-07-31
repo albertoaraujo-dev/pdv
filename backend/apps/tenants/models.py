@@ -70,6 +70,7 @@ class UserProfile(models.Model):
     organization = models.ForeignKey(Organization, on_delete=models.PROTECT, related_name="user_profiles", verbose_name="organização")
     role = models.CharField("perfil", max_length=24, choices=Role.choices, default=Role.OPERATOR)
     is_active = models.BooleanField("ativo", default=True)
+    must_change_password = models.BooleanField("exige troca de senha", default=False)
     created_at = models.DateTimeField("criado em", auto_now_add=True)
     updated_at = models.DateTimeField("atualizado em", auto_now=True)
 
