@@ -148,6 +148,19 @@ class SessionAuthTests(TestCase):
         self.assertEqual(response.json()["detail"], "Usuário ou senha inválidos.")
         self.assertEqual(LoginAttempt.objects.get().status, LoginAttempt.Status.FAILED)
 
+    def test_login_reports_inactive_user(self):
+        get_user_model().objects.create_user(username="inactive", password="test-pass", is_active=False)
+        response = self.client.post(
+            reverse("accounts:login"),
+            data={"username": "inactive", "password": "test-pass"},
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=self.csrf_token(),
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["detail"], "Usuário inativo.")
+        self.assertEqual(LoginAttempt.objects.get().status, LoginAttempt.Status.FAILED)
+
     def test_login_returns_user_permissions_and_session(self):
         response = self.client.post(
             reverse("accounts:login"),

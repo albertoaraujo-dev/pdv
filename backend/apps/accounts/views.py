@@ -1,6 +1,6 @@
 import json
 
-from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib.auth import password_validation, update_session_auth_hash
 from django.core.exceptions import ValidationError
 from django.http import JsonResponse
@@ -68,6 +68,10 @@ def login_view(request):
     user = authenticate(request, username=username, password=password)
 
     if user is None:
+        inactive_user = get_user_model().objects.filter(username__iexact=username, is_active=False).first()
+        if inactive_user and inactive_user.check_password(password):
+            record_login_attempt(request, username, LoginAttempt.Status.FAILED, "Usuário inativo.")
+            return JsonResponse({"detail": "Usuário inativo."}, status=403)
         record_login_attempt(request, username, LoginAttempt.Status.FAILED, "Credenciais inválidas.")
         return JsonResponse({"detail": "Usuário ou senha inválidos."}, status=400)
     if not user.is_active:
