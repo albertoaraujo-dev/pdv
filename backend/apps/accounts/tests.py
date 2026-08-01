@@ -113,6 +113,14 @@ class SessionAuthTests(TestCase):
         self.assertEqual(response.status_code, 200)
         return response.json()["csrfToken"]
 
+    def test_csrf_endpoint_returns_token_with_httponly_cookie(self):
+        response = self.client.get(reverse("accounts:csrf"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["csrfToken"])
+        self.assertTrue(response.cookies["csrftoken"]["httponly"])
+        self.assertEqual(response.cookies["csrftoken"]["samesite"], "Lax")
+
     def test_me_requires_authentication(self):
         response = self.client.get(reverse("accounts:me"))
 
@@ -152,6 +160,8 @@ class SessionAuthTests(TestCase):
         self.assertFalse(response.json()["permissions"]["must_change_password"])
         self.assertEqual(response.json()["profile"]["role"], UserProfile.Role.MANAGER)
         self.assertIn("sessionid", self.client.cookies)
+        self.assertTrue(self.client.cookies["sessionid"]["httponly"])
+        self.assertEqual(self.client.cookies["sessionid"]["samesite"], "Lax")
         self.assertEqual(LoginAttempt.objects.get().status, LoginAttempt.Status.SUCCESS)
 
         me_response = self.client.get(reverse("accounts:me"))

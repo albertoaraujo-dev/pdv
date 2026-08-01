@@ -15,13 +15,6 @@ type AuthUser = {
   }
 }
 
-function getCookie(name: string) {
-  return document.cookie
-    .split('; ')
-    .find((cookie) => cookie.startsWith(`${name}=`))
-    ?.split('=')[1]
-}
-
 async function submitLogin() {
   errorMessage.value = ''
   isSubmitting.value = true
@@ -35,7 +28,7 @@ async function submitLogin() {
       method: 'POST',
       credentials: 'include',
       headers: {
-        'X-CSRFToken': getCookie('csrftoken') || csrf.csrfToken
+        'X-CSRFToken': csrf.csrfToken
       },
       body: {
         username: username.value,

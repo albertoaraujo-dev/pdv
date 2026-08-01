@@ -18,13 +18,6 @@ const passwordRules = [
   'Evite senha parecida com seu nome, usuário ou e-mail.'
 ]
 
-function getCookie(name: string) {
-  return document.cookie
-    .split('; ')
-    .find((cookie) => cookie.startsWith(`${name}=`))
-    ?.split('=')[1]
-}
-
 async function submitPasswordChange() {
   errorMessage.value = ''
   successMessage.value = ''
@@ -39,7 +32,7 @@ async function submitPasswordChange() {
       method: 'POST',
       credentials: 'include',
       headers: {
-        'X-CSRFToken': getCookie('csrftoken') || csrf.csrfToken
+        'X-CSRFToken': csrf.csrfToken
       },
       body: {
         current_password: currentPassword.value,
@@ -73,7 +66,7 @@ async function submitLogout() {
       method: 'POST',
       credentials: 'include',
       headers: {
-        'X-CSRFToken': getCookie('csrftoken') || csrf.csrfToken
+        'X-CSRFToken': csrf.csrfToken
       }
     })
 
