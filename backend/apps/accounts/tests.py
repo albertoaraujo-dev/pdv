@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.contrib import admin
+from django.conf import settings
 from django.test import Client, RequestFactory, TestCase
 from django.urls import reverse
 
@@ -162,6 +163,7 @@ class SessionAuthTests(TestCase):
         self.assertIn("sessionid", self.client.cookies)
         self.assertTrue(self.client.cookies["sessionid"]["httponly"])
         self.assertEqual(self.client.cookies["sessionid"]["samesite"], "Lax")
+        self.assertEqual(int(self.client.cookies["sessionid"]["max-age"]), settings.SESSION_COOKIE_AGE)
         self.assertEqual(LoginAttempt.objects.get().status, LoginAttempt.Status.SUCCESS)
 
         me_response = self.client.get(reverse("accounts:me"))
