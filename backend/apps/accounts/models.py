@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
@@ -37,7 +38,7 @@ def normalize_username(username):
 
 def get_client_ip(request):
     forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
-    if forwarded_for:
+    if settings.TRUST_X_FORWARDED_FOR and forwarded_for:
         return forwarded_for.split(",")[0].strip()
     return request.META.get("REMOTE_ADDR")
 

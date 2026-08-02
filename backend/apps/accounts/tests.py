@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.contrib import admin
 from django.conf import settings
-from django.test import Client, RequestFactory, TestCase
+from django.test import Client, RequestFactory, TestCase, override_settings
 from django.urls import reverse
 
 from apps.accounts.admin import LoginAttemptAdmin
@@ -290,6 +290,42 @@ class SessionAuthTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
+
+    def test_login_lockout_does_not_trust_forwarded_for_by_default(self):
+        token = self.csrf_token()
+        for index in range(5):
+            response = self.client.post(
+                reverse("accounts:login"),
+                data={"username": "manager", "password": "wrong"},
+                content_type="application/json",
+                HTTP_X_CSRFTOKEN=token,
+                HTTP_X_FORWARDED_FOR=f"10.0.0.{index + 1}",
+            )
+            self.assertEqual(response.status_code, 400)
+
+        response = self.client.post(
+            reverse("accounts:login"),
+            data={"username": "manager", "password": "test-pass"},
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=token,
+            HTTP_X_FORWARDED_FOR="10.0.0.99",
+        )
+
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(LoginAttempt.objects.values_list("ip_address", flat=True).distinct().get(), "127.0.0.1")
+
+    @override_settings(TRUST_X_FORWARDED_FOR=True)
+    def test_login_audit_can_trust_forwarded_for_when_enabled(self):
+        response = self.client.post(
+            reverse("accounts:login"),
+            data={"username": "manager", "password": "wrong"},
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=self.csrf_token(),
+            HTTP_X_FORWARDED_FOR="10.0.0.10, 10.0.0.20",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(LoginAttempt.objects.get().ip_address, "10.0.0.10")
 
     def test_logout_invalidates_session(self):
         self.client.login(username="manager", password="test-pass")
