@@ -288,6 +288,12 @@ class SessionAuthTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self.client.get(reverse("accounts:me")).status_code, 401)
 
+    def test_logout_requires_authentication(self):
+        response = self.client.post(reverse("accounts:logout"), HTTP_X_CSRFTOKEN=self.csrf_token())
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()["detail"], "Usuário não autenticado.")
+
     def test_change_password_requires_authentication(self):
         response = self.client.post(
             reverse("accounts:change_password"),

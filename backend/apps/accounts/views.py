@@ -96,6 +96,8 @@ def login_view(request):
 @csrf_protect
 @require_POST
 def logout_view(request):
+    if not request.user.is_authenticated:
+        return JsonResponse({"detail": "Usuário não autenticado."}, status=401)
     logout(request)
     return JsonResponse({"status": "ok"})
 
