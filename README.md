@@ -59,6 +59,7 @@ docker compose restart frontend
 - Stack local com Docker Compose, PostgreSQL, Redis, Django e Nuxt.
 - Modelo multi-tenant inicial com organizações, lojas, perfis, acessos por loja, categorias, unidades e produtos.
 - Autenticação web por sessão e CSRF.
+- Sessões independentes para API/PDV e Django Admin no mesmo navegador.
 - Login/logout, `/api/auth/me/` e troca de senha autenticada.
 - Auditoria e lockout de tentativas de login.
 - Bloqueios para usuário, perfil e organização inativos.

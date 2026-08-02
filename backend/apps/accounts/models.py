@@ -37,6 +37,7 @@ class AuthEvent(models.Model):
     class EventType(models.TextChoices):
         LOGOUT = "logout", "Logout"
         PASSWORD_CHANGE = "password_change", "Troca de senha"
+        SESSION_REVOKED = "session_revoked", "Sessão revogada"
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="auth_events", verbose_name="usuário")
     username = models.CharField("usuário", max_length=150)

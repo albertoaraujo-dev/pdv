@@ -246,6 +246,7 @@ class SessionAuthTests(TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.json()["detail"], "Usuário inativo.")
         self.assertEqual(self.client.get(reverse("accounts:me")).status_code, 401)
+        self.assertEqual(AuthEvent.objects.get().event_type, AuthEvent.EventType.SESSION_REVOKED)
 
     def test_me_revokes_session_when_organization_becomes_inactive(self):
         self.client.login(username="manager", password="test-pass")
@@ -279,6 +280,39 @@ class SessionAuthTests(TestCase):
         me_response = self.client.get(reverse("accounts:me"))
         self.assertEqual(me_response.status_code, 200)
         self.assertEqual(me_response.json()["username"], "manager")
+
+    def test_admin_login_does_not_replace_pos_session(self):
+        operator = get_user_model().objects.create_user(username="operator", password="test-pass")
+        UserProfile.objects.create(user=operator, organization=self.organization, role=UserProfile.Role.OPERATOR)
+        UserStoreAccess.objects.create(profile=operator.profile, store=self.store)
+
+        login_response = self.client.post(
+            reverse("accounts:login"),
+            data={"username": "operator", "password": "test-pass"},
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=self.csrf_token(),
+        )
+        admin_response = self.client.post(
+            reverse("admin:login"),
+            data={"username": "manager", "password": "test-pass", "next": "/admin/"},
+            HTTP_X_CSRFTOKEN=self.client.cookies["csrftoken"].value,
+        )
+
+        self.assertEqual(login_response.status_code, 200)
+        self.assertEqual(admin_response.status_code, 302)
+        self.assertIn(settings.SESSION_COOKIE_NAME, self.client.cookies)
+        self.assertIn(settings.ADMIN_SESSION_COOKIE_NAME, self.client.cookies)
+        me_response = self.client.get(reverse("accounts:me"))
+        self.assertEqual(me_response.status_code, 200)
+        self.assertEqual(me_response.json()["username"], "operator")
+
+        operator.profile.is_active = False
+        operator.profile.save(update_fields=["is_active"])
+        revoked_response = self.client.get(reverse("accounts:me"))
+
+        self.assertEqual(revoked_response.status_code, 403)
+        self.assertEqual(revoked_response.json()["detail"], "Usuário inativo.")
+        self.assertEqual(AuthEvent.objects.get().user, operator)
 
     def test_login_locks_after_repeated_failures_by_username_and_ip(self):
         token = self.csrf_token()

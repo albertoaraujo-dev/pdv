@@ -39,6 +39,7 @@ def user_payload(user):
 
 def reject_inactive_session(request):
     if request.user.is_authenticated and is_inactive_for_login(request.user):
+        record_auth_event(request, request.user, AuthEvent.EventType.SESSION_REVOKED, "Sessão revogada por usuário inativo.")
         logout(request)
         return JsonResponse({"detail": "Usuário inativo."}, status=403)
     return None
