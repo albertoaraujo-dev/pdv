@@ -61,6 +61,7 @@ docker compose restart frontend
 - Autenticação web por sessão e CSRF.
 - Sessões independentes para API/PDV e Django Admin no mesmo navegador.
 - Login/logout, `/api/auth/me/` e troca de senha autenticada.
+- PDV mostra o usuário logado e permite sair sem encerrar a sessão do Django Admin.
 - Auditoria e lockout de tentativas de login.
 - Bloqueios para usuário, perfil e organização inativos.
 - Troca obrigatória de senha inicial para usuários criados por gerente.
