@@ -20,8 +20,29 @@ const { data: user } = await useFetch<AuthUser>(`${apiBase}/api/auth/me/`, {
   headers
 })
 
+const isLoggingOut = ref(false)
 const displayName = computed(() => user.value?.name || user.value?.username || 'Usuário')
 const storeNames = computed(() => user.value?.stores.map((store) => `${store.code} - ${store.name}`).join(', ') || 'Nenhuma loja ativa')
+
+async function logout() {
+  isLoggingOut.value = true
+
+  try {
+    const csrf = await $fetch<{ csrfToken: string }>(`${config.public.apiBase}/api/auth/csrf/`, {
+      credentials: 'include'
+    })
+
+    await $fetch(`${config.public.apiBase}/api/auth/logout/`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'X-CSRFToken': csrf.csrfToken
+      }
+    })
+  } finally {
+    await navigateTo('/login?next=/pdv', { external: true })
+  }
+}
 </script>
 
 <template>
@@ -36,6 +57,9 @@ const storeNames = computed(() => user.value?.stores.map((store) => `${store.cod
         <span>Logado como</span>
         <strong>{{ displayName }}</strong>
         <small>{{ user.username }} · {{ user.profile.role_label }}</small>
+        <button type="button" :disabled="isLoggingOut" @click="logout">
+          {{ isLoggingOut ? 'Saindo...' : 'Sair do PDV' }}
+        </button>
       </aside>
     </header>
 
@@ -111,6 +135,23 @@ dt {
 
 .user-card strong {
   font-size: 1.15rem;
+}
+
+button {
+  width: fit-content;
+  margin-top: 8px;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: #0f172a;
+  color: #ffffff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.65;
 }
 
 .status-card {
