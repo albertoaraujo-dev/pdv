@@ -24,6 +24,15 @@ def has_active_profile(user):
     return bool(user and user.is_active and profile and profile.is_active and profile.organization.is_active)
 
 
+def is_inactive_for_login(user):
+    if not user or not user.is_active:
+        return True
+    if user.is_superuser:
+        return False
+    profile = get_user_profile(user)
+    return bool(profile and (not profile.is_active or not profile.organization.is_active))
+
+
 def must_change_password(user):
     profile = get_user_profile(user)
     return bool(profile and profile.must_change_password)

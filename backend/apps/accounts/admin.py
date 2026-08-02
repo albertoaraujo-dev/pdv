@@ -3,6 +3,7 @@ from django.contrib.admin.forms import AdminAuthenticationForm
 from django.core.exceptions import ValidationError
 
 from .models import LoginAttempt, is_login_locked, record_login_attempt
+from .policies import is_inactive_for_login
 
 
 class AuditedAdminAuthenticationForm(AdminAuthenticationForm):
@@ -23,6 +24,10 @@ class AuditedAdminAuthenticationForm(AdminAuthenticationForm):
         except ValidationError:
             record_login_attempt(self.request, username, LoginAttempt.Status.FAILED, "Credenciais inválidas no admin.")
             raise
+
+        if is_inactive_for_login(self.user_cache):
+            record_login_attempt(self.request, username, LoginAttempt.Status.FAILED, "Usuário inativo no admin.")
+            raise ValidationError("Usuário inativo.", code="inactive")
 
         record_login_attempt(self.request, username, LoginAttempt.Status.SUCCESS, "Login realizado no admin.")
         return cleaned_data

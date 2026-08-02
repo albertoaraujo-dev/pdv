@@ -9,7 +9,7 @@ from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST
 
 from .models import LoginAttempt, is_login_locked, record_login_attempt
-from .policies import can_access_admin, can_access_pos, get_allowed_stores, get_user_profile, must_change_password
+from .policies import can_access_admin, can_access_pos, get_allowed_stores, get_user_profile, is_inactive_for_login, must_change_password
 
 
 def user_payload(user):
@@ -35,15 +35,6 @@ def user_payload(user):
             for store in get_allowed_stores(user)
         ],
     }
-
-
-def user_is_inactive_for_login(user):
-    profile = get_user_profile(user)
-    if not user.is_active:
-        return True
-    if profile and (not profile.is_active or not profile.organization.is_active):
-        return True
-    return False
 
 
 @ensure_csrf_cookie
@@ -83,7 +74,7 @@ def login_view(request):
             return JsonResponse({"detail": "Usuário inativo."}, status=403)
         record_login_attempt(request, username, LoginAttempt.Status.FAILED, "Credenciais inválidas.")
         return JsonResponse({"detail": "Usuário ou senha inválidos."}, status=400)
-    if user_is_inactive_for_login(user):
+    if is_inactive_for_login(user):
         record_login_attempt(request, username, LoginAttempt.Status.FAILED, "Usuário inativo.")
         return JsonResponse({"detail": "Usuário inativo."}, status=403)
 

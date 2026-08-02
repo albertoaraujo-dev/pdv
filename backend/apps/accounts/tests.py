@@ -408,3 +408,27 @@ class AdminLoginAuditTests(TestCase):
         self.assertContains(response, "Muitas tentativas inválidas", status_code=200)
         self.assertEqual(LoginAttempt.objects.filter(status=LoginAttempt.Status.FAILED).count(), 5)
         self.assertEqual(LoginAttempt.objects.filter(status=LoginAttempt.Status.LOCKED).count(), 1)
+
+    def test_admin_login_rejects_inactive_profile(self):
+        self.manager.profile.is_active = False
+        self.manager.profile.save(update_fields=["is_active"])
+
+        response = self.client.post(
+            reverse("admin:login"),
+            data={"username": "manager", "password": "test-pass", "next": "/admin/"},
+        )
+
+        self.assertContains(response, "Usuário inativo", status_code=200)
+        self.assertEqual(LoginAttempt.objects.get().status, LoginAttempt.Status.FAILED)
+
+    def test_admin_login_rejects_inactive_organization(self):
+        self.organization.is_active = False
+        self.organization.save(update_fields=["is_active"])
+
+        response = self.client.post(
+            reverse("admin:login"),
+            data={"username": "manager", "password": "test-pass", "next": "/admin/"},
+        )
+
+        self.assertContains(response, "Usuário inativo", status_code=200)
+        self.assertEqual(LoginAttempt.objects.get().status, LoginAttempt.Status.FAILED)
