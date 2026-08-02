@@ -146,6 +146,17 @@ class SessionAuthTests(TestCase):
         self.assertEqual(response.status_code, 415)
         self.assertEqual(response.json()["detail"], "Content-Type inválido.")
 
+    def test_login_rejects_malformed_json(self):
+        response = self.client.post(
+            reverse("accounts:login"),
+            data="{invalid-json",
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=self.csrf_token(),
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["detail"], "JSON inválido.")
+
     def test_login_rejects_invalid_credentials(self):
         response = self.client.post(
             reverse("accounts:login"),
@@ -383,6 +394,18 @@ class SessionAuthTests(TestCase):
 
         self.assertEqual(response.status_code, 415)
         self.assertEqual(response.json()["detail"], "Content-Type inválido.")
+
+    def test_change_password_rejects_malformed_json(self):
+        self.client.login(username="manager", password="test-pass")
+        response = self.client.post(
+            reverse("accounts:change_password"),
+            data="{invalid-json",
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=self.csrf_token(),
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["detail"], "JSON inválido.")
 
     def test_change_password_rejects_inactive_session(self):
         self.client.login(username="manager", password="test-pass")
