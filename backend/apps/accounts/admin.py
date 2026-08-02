@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.admin.forms import AdminAuthenticationForm
 from django.core.exceptions import ValidationError
 
-from .models import LoginAttempt, is_login_locked, record_login_attempt
+from .models import AuthEvent, LoginAttempt, is_login_locked, record_login_attempt
 from .policies import is_inactive_for_login, must_change_password
 
 
@@ -46,6 +46,29 @@ class LoginAttemptAdmin(admin.ModelAdmin):
     list_filter = ["status", "created_at"]
     search_fields = ["username", "normalized_username", "ip_address", "user_agent", "reason"]
     readonly_fields = ["username", "normalized_username", "ip_address", "user_agent", "status", "reason", "created_at"]
+
+    def has_module_permission(self, request):
+        return request.user.is_superuser
+
+    def has_view_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+
+@admin.register(AuthEvent)
+class AuthEventAdmin(admin.ModelAdmin):
+    list_display = ["created_at", "username", "event_type", "ip_address", "reason"]
+    list_filter = ["event_type", "created_at"]
+    search_fields = ["username", "ip_address", "user_agent", "reason"]
+    readonly_fields = ["user", "username", "event_type", "ip_address", "user_agent", "reason", "created_at"]
 
     def has_module_permission(self, request):
         return request.user.is_superuser

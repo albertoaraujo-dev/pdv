@@ -53,6 +53,8 @@ def can_access_admin(user):
 
 
 def get_allowed_stores(user):
+    if user and user.is_active and user.is_superuser:
+        return Store.objects.filter(is_active=True)
     profile = get_user_profile(user)
     if not profile or not has_active_profile(user):
         return Store.objects.none()
@@ -62,6 +64,8 @@ def get_allowed_stores(user):
 
 
 def get_visible_stores(user):
+    if user and user.is_active and user.is_superuser:
+        return Store.objects.all()
     profile = get_user_profile(user)
     if not profile or not has_active_profile(user):
         return Store.objects.none()
@@ -71,6 +75,8 @@ def get_visible_stores(user):
 
 
 def can_access_pos(user):
+    if user and user.is_active and user.is_superuser:
+        return True
     profile = get_user_profile(user)
     return bool(has_active_profile(user) and not must_change_password(user) and profile.role in OPERATIONAL_ROLES and get_allowed_stores(user).exists())
 

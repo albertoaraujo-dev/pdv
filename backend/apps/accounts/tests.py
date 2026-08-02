@@ -4,8 +4,8 @@ from django.conf import settings
 from django.test import Client, RequestFactory, TestCase, override_settings
 from django.urls import reverse
 
-from apps.accounts.admin import LoginAttemptAdmin
-from apps.accounts.models import LoginAttempt
+from apps.accounts.admin import AuthEventAdmin, LoginAttemptAdmin
+from apps.accounts.models import AuthEvent, LoginAttempt
 from apps.accounts.policies import can_access_admin, can_access_pos, get_allowed_stores, get_manageable_profiles, get_visible_stores
 from apps.tenants.models import Organization, Store, UserProfile, UserStoreAccess
 
@@ -30,6 +30,13 @@ class AccessPolicyTests(TestCase):
         user = self.create_user_with_profile("root", UserProfile.Role.ADMIN, is_staff=True, is_superuser=True)
 
         self.assertTrue(can_access_admin(user))
+
+    def test_superuser_can_access_pos_and_all_stores_without_profile(self):
+        user = self.create_user_with_profile("root", UserProfile.Role.ADMIN, is_staff=True, is_superuser=True)
+
+        self.assertTrue(can_access_pos(user))
+        self.assertEqual(list(get_allowed_stores(user)), [self.store])
+        self.assertEqual(list(get_visible_stores(user)), [self.store])
 
     def test_manager_with_staff_can_access_admin(self):
         user = self.create_user_with_profile("manager", UserProfile.Role.MANAGER, is_staff=True)
@@ -372,6 +379,7 @@ class SessionAuthTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self.client.get(reverse("accounts:me")).status_code, 401)
+        self.assertEqual(AuthEvent.objects.get().event_type, AuthEvent.EventType.LOGOUT)
 
     def test_logout_requires_authentication(self):
         response = self.client.post(reverse("accounts:logout"), HTTP_X_CSRFTOKEN=self.csrf_token())
@@ -449,6 +457,7 @@ class SessionAuthTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["detail"], "Senha atual incorreta.")
+        self.assertFalse(AuthEvent.objects.exists())
 
     def test_change_password_rejects_mismatched_confirmation(self):
         self.client.login(username="manager", password="test-pass")
@@ -494,6 +503,7 @@ class SessionAuthTests(TestCase):
         self.assertTrue(self.manager.check_password("new-strong-pass-123"))
         self.assertFalse(self.manager.profile.must_change_password)
         self.assertEqual(self.client.get(reverse("accounts:me")).status_code, 200)
+        self.assertEqual(AuthEvent.objects.get().event_type, AuthEvent.EventType.PASSWORD_CHANGE)
 
 
 class AdminSitePolicyTests(TestCase):
@@ -519,6 +529,15 @@ class AdminSitePolicyTests(TestCase):
 
     def test_only_superuser_sees_login_attempts_admin(self):
         model_admin = LoginAttemptAdmin(LoginAttempt, admin.site)
+        superuser = get_user_model().objects.create_superuser(username="root", password="test-pass")
+        manager = get_user_model().objects.create_user(username="manager", password="test-pass", is_staff=True)
+        UserProfile.objects.create(user=manager, organization=self.organization, role=UserProfile.Role.MANAGER)
+
+        self.assertTrue(model_admin.has_module_permission(self.request_for(superuser)))
+        self.assertFalse(model_admin.has_module_permission(self.request_for(manager)))
+
+    def test_only_superuser_sees_auth_events_admin(self):
+        model_admin = AuthEventAdmin(AuthEvent, admin.site)
         superuser = get_user_model().objects.create_superuser(username="root", password="test-pass")
         manager = get_user_model().objects.create_user(username="manager", password="test-pass", is_staff=True)
         UserProfile.objects.create(user=manager, organization=self.organization, role=UserProfile.Role.MANAGER)

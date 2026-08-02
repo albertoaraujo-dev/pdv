@@ -8,7 +8,7 @@ from django.middleware.csrf import get_token
 from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST
 
-from .models import LoginAttempt, is_login_locked, record_login_attempt
+from .models import AuthEvent, LoginAttempt, is_login_locked, record_auth_event, record_login_attempt
 from .policies import can_access_admin, can_access_pos, get_allowed_stores, get_user_profile, is_inactive_for_login, must_change_password
 
 
@@ -106,6 +106,7 @@ def login_view(request):
 def logout_view(request):
     if not request.user.is_authenticated:
         return JsonResponse({"detail": "Usuário não autenticado."}, status=401)
+    record_auth_event(request, request.user, AuthEvent.EventType.LOGOUT, "Logout realizado.")
     logout(request)
     return JsonResponse({"status": "ok"})
 
@@ -144,4 +145,5 @@ def change_password(request):
         profile.must_change_password = False
         profile.save(update_fields=["must_change_password"])
     update_session_auth_hash(request, request.user)
+    record_auth_event(request, request.user, AuthEvent.EventType.PASSWORD_CHANGE, "Senha alterada.")
     return JsonResponse({"status": "ok"})
