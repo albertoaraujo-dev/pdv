@@ -719,3 +719,18 @@ class AdminLoginAuditTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(LoginAttempt.objects.get().status, LoginAttempt.Status.SUCCESS)
+
+    def test_admin_revokes_session_when_profile_becomes_inactive(self):
+        self.client.post(
+            reverse("admin:login"),
+            data={"username": "manager", "password": "test-pass", "next": "/admin/"},
+        )
+        self.manager.profile.is_active = False
+        self.manager.profile.save(update_fields=["is_active"])
+
+        response = self.client.get(reverse("admin:index"))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("admin:login"), response["Location"])
+        self.assertEqual(AuthEvent.objects.get().event_type, AuthEvent.EventType.SESSION_REVOKED)
+        self.assertEqual(AuthEvent.objects.get().user, self.manager)

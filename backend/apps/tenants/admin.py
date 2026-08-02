@@ -1,9 +1,11 @@
 from django.contrib import admin
+from django.contrib.auth import logout
 from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.contrib.auth.forms import UserCreationForm
 from django import forms
 
+from apps.accounts.models import AuthEvent, record_auth_event
 from apps.accounts.policies import (
     SUBORDINATE_ROLES,
     can_access_admin,
@@ -12,6 +14,7 @@ from apps.accounts.policies import (
     get_manageable_users,
     get_user_organization,
     get_visible_stores,
+    is_inactive_for_login,
     is_manager,
 )
 
@@ -22,6 +25,11 @@ User = get_user_model()
 
 
 def admin_has_permission(request):
+    if request.user.is_authenticated and is_inactive_for_login(request.user):
+        record_auth_event(request, request.user, AuthEvent.EventType.SESSION_REVOKED, "Sessão do admin revogada por usuário inativo.")
+        if hasattr(request, "session"):
+            logout(request)
+        return False
     return can_access_admin(request.user)
 
 
