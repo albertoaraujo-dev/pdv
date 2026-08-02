@@ -37,6 +37,15 @@ def user_payload(user):
     }
 
 
+def user_is_inactive_for_login(user):
+    profile = get_user_profile(user)
+    if not user.is_active:
+        return True
+    if profile and (not profile.is_active or not profile.organization.is_active):
+        return True
+    return False
+
+
 @ensure_csrf_cookie
 @require_GET
 def csrf(request):
@@ -74,7 +83,7 @@ def login_view(request):
             return JsonResponse({"detail": "Usuário inativo."}, status=403)
         record_login_attempt(request, username, LoginAttempt.Status.FAILED, "Credenciais inválidas.")
         return JsonResponse({"detail": "Usuário ou senha inválidos."}, status=400)
-    if not user.is_active:
+    if user_is_inactive_for_login(user):
         record_login_attempt(request, username, LoginAttempt.Status.FAILED, "Usuário inativo.")
         return JsonResponse({"detail": "Usuário inativo."}, status=403)
 

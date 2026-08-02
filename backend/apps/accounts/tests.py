@@ -161,6 +161,38 @@ class SessionAuthTests(TestCase):
         self.assertEqual(response.json()["detail"], "Usuário inativo.")
         self.assertEqual(LoginAttempt.objects.get().status, LoginAttempt.Status.FAILED)
 
+    def test_login_rejects_inactive_profile(self):
+        self.manager.profile.is_active = False
+        self.manager.profile.save(update_fields=["is_active"])
+
+        response = self.client.post(
+            reverse("accounts:login"),
+            data={"username": "manager", "password": "test-pass"},
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=self.csrf_token(),
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["detail"], "Usuário inativo.")
+        self.assertNotIn("sessionid", self.client.cookies)
+        self.assertEqual(LoginAttempt.objects.get().status, LoginAttempt.Status.FAILED)
+
+    def test_login_rejects_inactive_organization(self):
+        self.organization.is_active = False
+        self.organization.save(update_fields=["is_active"])
+
+        response = self.client.post(
+            reverse("accounts:login"),
+            data={"username": "manager", "password": "test-pass"},
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=self.csrf_token(),
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["detail"], "Usuário inativo.")
+        self.assertNotIn("sessionid", self.client.cookies)
+        self.assertEqual(LoginAttempt.objects.get().status, LoginAttempt.Status.FAILED)
+
     def test_login_returns_user_permissions_and_session(self):
         response = self.client.post(
             reverse("accounts:login"),
