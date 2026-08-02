@@ -18,7 +18,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
     }
 
     return navigateTo(`${config.public.apiBase}/admin/`, { external: true })
-  } catch {
-    return navigateTo(`/login?next=${encodeURIComponent(to.fullPath)}`)
+  } catch (error: any) {
+    const reason = error?.data?.detail === 'Usuário inativo.' ? '&reason=inactive' : ''
+    return navigateTo(`/login?next=${encodeURIComponent(to.fullPath)}${reason}`)
   }
 })

@@ -8,7 +8,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
       credentials: 'include',
       headers
     })
-  } catch {
-    return navigateTo(`/login?next=${encodeURIComponent(to.fullPath)}`)
+  } catch (error: any) {
+    const reason = error?.data?.detail === 'Usuário inativo.' ? '&reason=inactive' : ''
+    return navigateTo(`/login?next=${encodeURIComponent(to.fullPath)}${reason}`)
   }
 })

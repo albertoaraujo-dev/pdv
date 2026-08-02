@@ -16,7 +16,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
     if (!user.permissions.can_access_pos) {
       return navigateTo(`/login?next=${encodeURIComponent(to.fullPath)}`)
     }
-  } catch {
-    return navigateTo(`/login?next=${encodeURIComponent(to.fullPath)}`)
+  } catch (error: any) {
+    const reason = error?.data?.detail === 'Usuário inativo.' ? '&reason=inactive' : ''
+    return navigateTo(`/login?next=${encodeURIComponent(to.fullPath)}${reason}`)
   }
 })

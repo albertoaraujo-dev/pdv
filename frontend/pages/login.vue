@@ -4,7 +4,7 @@ const route = useRoute()
 
 const username = ref('')
 const password = ref('')
-const errorMessage = ref('')
+const errorMessage = ref(route.query.reason === 'inactive' ? 'Usuário inativo.' : '')
 const isSubmitting = ref(false)
 
 type AuthUser = {
