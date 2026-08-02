@@ -66,6 +66,7 @@ docker compose restart frontend
 - Bloqueios para usuário, perfil e organização inativos.
 - Troca obrigatória de senha inicial para usuários criados por gerente.
 - Hardening local de cookies, CSRF, sessão, headers e IP auditado.
+- Fase 3 de autenticação, autorização e segurança concluída e validada.
 
 ## Observações
 
