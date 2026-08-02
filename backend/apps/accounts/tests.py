@@ -327,6 +327,19 @@ class SessionAuthTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(LoginAttempt.objects.get().ip_address, "10.0.0.10")
 
+    @override_settings(TRUST_X_FORWARDED_FOR=True)
+    def test_login_audit_ignores_invalid_forwarded_for(self):
+        response = self.client.post(
+            reverse("accounts:login"),
+            data={"username": "manager", "password": "wrong"},
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=self.csrf_token(),
+            HTTP_X_FORWARDED_FOR="not-an-ip",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(LoginAttempt.objects.get().ip_address, "127.0.0.1")
+
     def test_logout_invalidates_session(self):
         self.client.login(username="manager", password="test-pass")
         response = self.client.post(reverse("accounts:logout"), HTTP_X_CSRFTOKEN=self.csrf_token())

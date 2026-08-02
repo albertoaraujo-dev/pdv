@@ -1,4 +1,5 @@
 from datetime import timedelta
+from ipaddress import ip_address
 
 from django.conf import settings
 from django.db import models
@@ -36,11 +37,22 @@ def normalize_username(username):
     return (username or "").strip().lower()
 
 
+def normalize_ip(value):
+    if not value:
+        return None
+    try:
+        return str(ip_address(value.strip()))
+    except ValueError:
+        return None
+
+
 def get_client_ip(request):
     forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
     if settings.TRUST_X_FORWARDED_FOR and forwarded_for:
-        return forwarded_for.split(",")[0].strip()
-    return request.META.get("REMOTE_ADDR")
+        forwarded_ip = normalize_ip(forwarded_for.split(",")[0])
+        if forwarded_ip:
+            return forwarded_ip
+    return normalize_ip(request.META.get("REMOTE_ADDR"))
 
 
 def record_login_attempt(request, username, status, reason=""):
