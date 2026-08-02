@@ -3,7 +3,7 @@ from django.contrib.admin.forms import AdminAuthenticationForm
 from django.core.exceptions import ValidationError
 
 from .models import LoginAttempt, is_login_locked, record_login_attempt
-from .policies import is_inactive_for_login
+from .policies import is_inactive_for_login, must_change_password
 
 
 class AuditedAdminAuthenticationForm(AdminAuthenticationForm):
@@ -28,6 +28,10 @@ class AuditedAdminAuthenticationForm(AdminAuthenticationForm):
         if is_inactive_for_login(self.user_cache):
             record_login_attempt(self.request, username, LoginAttempt.Status.FAILED, "Usuário inativo no admin.")
             raise ValidationError("Usuário inativo.", code="inactive")
+
+        if must_change_password(self.user_cache):
+            record_login_attempt(self.request, username, LoginAttempt.Status.FAILED, "Troca de senha obrigatória no admin.")
+            raise ValidationError("Troque sua senha antes de acessar o painel administrativo.", code="password_change_required")
 
         record_login_attempt(self.request, username, LoginAttempt.Status.SUCCESS, "Login realizado no admin.")
         return cleaned_data

@@ -470,3 +470,15 @@ class AdminLoginAuditTests(TestCase):
 
         self.assertContains(response, "Usuário inativo", status_code=200)
         self.assertEqual(LoginAttempt.objects.get().status, LoginAttempt.Status.FAILED)
+
+    def test_admin_login_rejects_pending_password_change(self):
+        self.manager.profile.must_change_password = True
+        self.manager.profile.save(update_fields=["must_change_password"])
+
+        response = self.client.post(
+            reverse("admin:login"),
+            data={"username": "manager", "password": "test-pass", "next": "/admin/"},
+        )
+
+        self.assertContains(response, "Troque sua senha antes de acessar o painel administrativo", status_code=200)
+        self.assertEqual(LoginAttempt.objects.get().status, LoginAttempt.Status.FAILED)
