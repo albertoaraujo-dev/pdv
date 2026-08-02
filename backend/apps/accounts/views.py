@@ -44,6 +44,15 @@ def reject_inactive_session(request):
     return None
 
 
+def parse_json_request(request):
+    if request.content_type != "application/json":
+        return None, JsonResponse({"detail": "Content-Type inválido."}, status=415)
+    try:
+        return json.loads(request.body or "{}"), None
+    except json.JSONDecodeError:
+        return None, JsonResponse({"detail": "JSON inválido."}, status=400)
+
+
 @ensure_csrf_cookie
 @require_GET
 def csrf(request):
@@ -63,10 +72,9 @@ def me(request):
 @csrf_protect
 @require_POST
 def login_view(request):
-    try:
-        payload = json.loads(request.body or "{}")
-    except json.JSONDecodeError:
-        return JsonResponse({"detail": "JSON inválido."}, status=400)
+    payload, error_response = parse_json_request(request)
+    if error_response:
+        return error_response
 
     username = payload.get("username", "")
     password = payload.get("password", "")
@@ -111,10 +119,9 @@ def change_password(request):
     if inactive_response:
         return inactive_response
 
-    try:
-        payload = json.loads(request.body or "{}")
-    except json.JSONDecodeError:
-        return JsonResponse({"detail": "JSON inválido."}, status=400)
+    payload, error_response = parse_json_request(request)
+    if error_response:
+        return error_response
 
     current_password = payload.get("current_password", "")
     new_password = payload.get("new_password", "")
