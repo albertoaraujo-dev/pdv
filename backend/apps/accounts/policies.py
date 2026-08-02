@@ -30,7 +30,7 @@ def is_inactive_for_login(user):
     if user.is_superuser:
         return False
     profile = get_user_profile(user)
-    return bool(profile and (not profile.is_active or not profile.organization.is_active))
+    return bool(not profile or not profile.is_active or not profile.organization.is_active)
 
 
 def must_change_password(user):

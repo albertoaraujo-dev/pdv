@@ -214,6 +214,21 @@ class SessionAuthTests(TestCase):
         self.assertNotIn("sessionid", self.client.cookies)
         self.assertEqual(LoginAttempt.objects.get().status, LoginAttempt.Status.FAILED)
 
+    def test_login_rejects_user_without_profile(self):
+        get_user_model().objects.create_user(username="orphan", password="test-pass")
+
+        response = self.client.post(
+            reverse("accounts:login"),
+            data={"username": "orphan", "password": "test-pass"},
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=self.csrf_token(),
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["detail"], "Usuário inativo.")
+        self.assertNotIn("sessionid", self.client.cookies)
+        self.assertEqual(LoginAttempt.objects.get().status, LoginAttempt.Status.FAILED)
+
     def test_me_revokes_session_when_profile_becomes_inactive(self):
         self.client.login(username="manager", password="test-pass")
         self.manager.profile.is_active = False
@@ -581,3 +596,25 @@ class AdminLoginAuditTests(TestCase):
 
         self.assertContains(response, "Troque sua senha antes de acessar o painel administrativo", status_code=200)
         self.assertEqual(LoginAttempt.objects.get().status, LoginAttempt.Status.FAILED)
+
+    def test_admin_login_rejects_staff_user_without_profile(self):
+        get_user_model().objects.create_user(username="orphan-staff", password="test-pass", is_staff=True)
+
+        response = self.client.post(
+            reverse("admin:login"),
+            data={"username": "orphan-staff", "password": "test-pass", "next": "/admin/"},
+        )
+
+        self.assertContains(response, "Usuário inativo", status_code=200)
+        self.assertEqual(LoginAttempt.objects.get().status, LoginAttempt.Status.FAILED)
+
+    def test_admin_login_allows_superuser_without_profile(self):
+        get_user_model().objects.create_superuser(username="root", password="test-pass")
+
+        response = self.client.post(
+            reverse("admin:login"),
+            data={"username": "root", "password": "test-pass", "next": "/admin/"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(LoginAttempt.objects.get().status, LoginAttempt.Status.SUCCESS)
