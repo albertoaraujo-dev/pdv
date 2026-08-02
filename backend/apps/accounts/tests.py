@@ -193,6 +193,28 @@ class SessionAuthTests(TestCase):
         self.assertNotIn("sessionid", self.client.cookies)
         self.assertEqual(LoginAttempt.objects.get().status, LoginAttempt.Status.FAILED)
 
+    def test_me_revokes_session_when_profile_becomes_inactive(self):
+        self.client.login(username="manager", password="test-pass")
+        self.manager.profile.is_active = False
+        self.manager.profile.save(update_fields=["is_active"])
+
+        response = self.client.get(reverse("accounts:me"))
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["detail"], "Usuário inativo.")
+        self.assertEqual(self.client.get(reverse("accounts:me")).status_code, 401)
+
+    def test_me_revokes_session_when_organization_becomes_inactive(self):
+        self.client.login(username="manager", password="test-pass")
+        self.organization.is_active = False
+        self.organization.save(update_fields=["is_active"])
+
+        response = self.client.get(reverse("accounts:me"))
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["detail"], "Usuário inativo.")
+        self.assertEqual(self.client.get(reverse("accounts:me")).status_code, 401)
+
     def test_login_returns_user_permissions_and_session(self):
         response = self.client.post(
             reverse("accounts:login"),
@@ -285,6 +307,22 @@ class SessionAuthTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 403)
+
+    def test_change_password_rejects_inactive_session(self):
+        self.client.login(username="manager", password="test-pass")
+        self.manager.profile.is_active = False
+        self.manager.profile.save(update_fields=["is_active"])
+
+        response = self.client.post(
+            reverse("accounts:change_password"),
+            data={"current_password": "test-pass", "new_password": "new-strong-pass-123", "new_password_confirm": "new-strong-pass-123"},
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=self.csrf_token(),
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["detail"], "Usuário inativo.")
+        self.assertFalse(self.manager.check_password("new-strong-pass-123"))
 
     def test_change_password_rejects_wrong_current_password(self):
         self.client.login(username="manager", password="test-pass")

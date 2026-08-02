@@ -37,6 +37,13 @@ def user_payload(user):
     }
 
 
+def reject_inactive_session(request):
+    if request.user.is_authenticated and is_inactive_for_login(request.user):
+        logout(request)
+        return JsonResponse({"detail": "Usuário inativo."}, status=403)
+    return None
+
+
 @ensure_csrf_cookie
 @require_GET
 def csrf(request):
@@ -47,6 +54,9 @@ def csrf(request):
 def me(request):
     if not request.user.is_authenticated:
         return JsonResponse({"detail": "Usuário não autenticado."}, status=401)
+    inactive_response = reject_inactive_session(request)
+    if inactive_response:
+        return inactive_response
     return JsonResponse(user_payload(request.user))
 
 
@@ -95,6 +105,9 @@ def logout_view(request):
 def change_password(request):
     if not request.user.is_authenticated:
         return JsonResponse({"detail": "Usuário não autenticado."}, status=401)
+    inactive_response = reject_inactive_session(request)
+    if inactive_response:
+        return inactive_response
 
     try:
         payload = json.loads(request.body or "{}")
