@@ -129,6 +129,16 @@ class SessionAuthTests(TestCase):
         self.assertTrue(response.cookies["csrftoken"]["httponly"])
         self.assertEqual(response.cookies["csrftoken"]["samesite"], "Lax")
 
+    def test_openapi_schema_lists_initial_api_contract(self):
+        response = self.client.get("/api/schema/")
+
+        self.assertEqual(response.status_code, 200)
+        schema = response.json()
+        self.assertEqual(schema["openapi"], "3.0.3")
+        self.assertIn("/api/catalog/products/", schema["paths"])
+        self.assertIn("/api/tenants/users/", schema["paths"])
+        self.assertIn("/api/auth/login/", schema["paths"])
+
     def test_me_requires_authentication(self):
         response = self.client.get(reverse("accounts:me"))
 
