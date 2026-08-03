@@ -15,14 +15,58 @@ type AuthUser = {
   stores: Array<{ id: number, name: string, code: string }>
 }
 
+type Product = {
+  id: number
+  name: string
+  sku: string
+  barcode: string
+  price: string
+  category: { name: string }
+  unit: { symbol: string }
+}
+
+type PaginatedResponse<T> = {
+  count: number
+  next: string | null
+  previous: string | null
+  results: T[]
+}
+
 const { data: user } = await useFetch<AuthUser>(`${apiBase}/api/auth/me/`, {
   credentials: 'include',
   headers
 })
 
 const isLoggingOut = ref(false)
+const search = ref('')
+const productQuery = ref('')
 const displayName = computed(() => user.value?.name || user.value?.username || 'Usuário')
 const storeNames = computed(() => user.value?.stores.map((store) => `${store.code} - ${store.name}`).join(', ') || 'Nenhuma loja ativa')
+const productUrl = computed(() => {
+  const params = new URLSearchParams()
+  if (productQuery.value) {
+    params.set('q', productQuery.value)
+  }
+  const query = params.toString()
+  return `${apiBase}/api/catalog/products/${query ? `?${query}` : ''}`
+})
+
+const { data: products, pending: isLoadingProducts, refresh: refreshProducts } = await useFetch<PaginatedResponse<Product>>(productUrl, {
+  credentials: 'include',
+  headers,
+  watch: [productUrl]
+})
+
+let searchTimeout: ReturnType<typeof setTimeout> | undefined
+
+watch(search, (value) => {
+  if (searchTimeout) {
+    clearTimeout(searchTimeout)
+  }
+  searchTimeout = setTimeout(() => {
+    productQuery.value = value.trim()
+  }, 250)
+})
 
 async function logout() {
   isLoggingOut.value = true
@@ -76,6 +120,38 @@ async function logout() {
         </div>
       </dl>
     </section>
+
+    <section class="products-card">
+      <div class="products-heading">
+        <div>
+          <p class="eyebrow">Catálogo</p>
+          <h2>Produtos disponíveis</h2>
+        </div>
+        <button type="button" :disabled="isLoadingProducts" @click="refreshProducts">
+          Atualizar
+        </button>
+      </div>
+
+      <label class="search-field">
+        Buscar por nome, SKU ou código de barras
+        <input v-model="search" type="search" placeholder="Ex.: água, SKU ou código">
+      </label>
+
+      <p v-if="isLoadingProducts" class="muted">Carregando produtos...</p>
+      <p v-else-if="!products?.results.length" class="muted">Nenhum produto encontrado.</p>
+
+      <ul v-else class="product-list">
+        <li v-for="product in products.results" :key="product.id">
+          <div>
+            <strong>{{ product.name }}</strong>
+            <small>{{ product.sku }} · {{ product.category.name }} · {{ product.unit.symbol }}</small>
+          </div>
+          <span>R$ {{ product.price }}</span>
+        </li>
+      </ul>
+
+      <small v-if="products" class="muted">{{ products.count }} produto(s) encontrado(s)</small>
+    </section>
   </main>
 </template>
 
@@ -111,7 +187,8 @@ h1 {
 }
 
 .user-card,
-.status-card {
+.status-card,
+.products-card {
   border: 1px solid #e2e8f0;
   border-radius: 20px;
   background: #ffffff;
@@ -156,7 +233,72 @@ button:disabled {
 
 .status-card {
   max-width: 760px;
+  margin-bottom: 24px;
   padding: 24px;
+}
+
+.products-card {
+  max-width: 960px;
+  display: grid;
+  gap: 18px;
+  padding: 24px;
+}
+
+.products-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+h2 {
+  margin: 0;
+  font-size: 1.8rem;
+}
+
+.search-field {
+  display: grid;
+  gap: 8px;
+  color: #475569;
+  font-weight: 800;
+}
+
+input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  color: #0f172a;
+}
+
+.product-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.product-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.product-list small,
+.muted {
+  color: #64748b;
+}
+
+.product-list span {
+  font-weight: 900;
+  white-space: nowrap;
 }
 
 .status-card p {
