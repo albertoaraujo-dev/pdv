@@ -67,6 +67,7 @@ docker compose restart frontend
 - Troca obrigatória de senha inicial para usuários criados por gerente.
 - Hardening local de cookies, CSRF, sessão, headers e IP auditado.
 - Fase 3 de autenticação, autorização e segurança concluída e validada.
+- Fase 4 iniciada com API DRF de leitura do catálogo em `/api/catalog/`.
 
 ## Observações
 

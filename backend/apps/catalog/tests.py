@@ -2,10 +2,12 @@ from django.core.exceptions import ValidationError
 from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase
+from django.urls import reverse
+from rest_framework.test import APIClient
 
 from apps.catalog.admin import ProductAdmin
 from apps.catalog.models import Category, Product, Unit
-from apps.tenants.models import Organization, UserProfile
+from apps.tenants.models import Organization, Store, UserProfile, UserStoreAccess
 
 
 class CatalogModelTests(TestCase):
@@ -67,3 +69,92 @@ class CatalogAdminScopeTests(TestCase):
         queryset = model_admin.get_queryset(request)
 
         self.assertEqual(list(queryset), [first_product])
+
+
+class CatalogApiTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.first_org = Organization.objects.create(name="Primeira")
+        self.second_org = Organization.objects.create(name="Segunda")
+        self.first_store = Store.objects.create(organization=self.first_org, name="Matriz", code="M01")
+        self.first_category = Category.objects.create(organization=self.first_org, name="Bebidas")
+        self.second_category = Category.objects.create(organization=self.second_org, name="Lanches")
+        self.first_unit = Unit.objects.create(organization=self.first_org, name="Unidade", symbol="UN")
+        self.second_unit = Unit.objects.create(organization=self.second_org, name="Caixa", symbol="CX")
+        self.first_product = Product.objects.create(
+            organization=self.first_org,
+            category=self.first_category,
+            unit=self.first_unit,
+            name="Agua",
+            sku="AGUA-001",
+            price="3.50",
+        )
+        self.second_product = Product.objects.create(
+            organization=self.second_org,
+            category=self.second_category,
+            unit=self.second_unit,
+            name="Sanduiche",
+            sku="SAND-001",
+            price="12.00",
+        )
+        self.inactive_product = Product.objects.create(
+            organization=self.first_org,
+            category=self.first_category,
+            unit=self.first_unit,
+            name="Refrigerante antigo",
+            sku="REF-OLD",
+            price="6.00",
+            is_active=False,
+        )
+        self.operator = get_user_model().objects.create_user(username="operator", password="test-pass")
+        UserProfile.objects.create(user=self.operator, organization=self.first_org, role=UserProfile.Role.OPERATOR)
+        UserStoreAccess.objects.create(profile=self.operator.profile, store=self.first_store)
+
+    def test_catalog_api_requires_authentication(self):
+        response = self.client.get(reverse("product-list"))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_product_list_is_scoped_to_user_organization_and_active_records(self):
+        self.client.force_authenticate(self.operator)
+
+        response = self.client.get(reverse("product-list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([product["id"] for product in response.json()], [self.first_product.id])
+
+    def test_product_detail_outside_user_organization_returns_not_found(self):
+        self.client.force_authenticate(self.operator)
+
+        response = self.client.get(reverse("product-detail", args=[self.second_product.id]))
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_category_and_unit_lists_are_scoped_to_user_organization(self):
+        self.client.force_authenticate(self.operator)
+
+        categories_response = self.client.get(reverse("category-list"))
+        units_response = self.client.get(reverse("unit-list"))
+
+        self.assertEqual(categories_response.status_code, 200)
+        self.assertEqual(units_response.status_code, 200)
+        self.assertEqual([category["id"] for category in categories_response.json()], [self.first_category.id])
+        self.assertEqual([unit["id"] for unit in units_response.json()], [self.first_unit.id])
+
+    def test_inactive_profile_cannot_read_catalog_api(self):
+        self.operator.profile.is_active = False
+        self.operator.profile.save(update_fields=["is_active"])
+        self.client.force_authenticate(self.operator)
+
+        response = self.client.get(reverse("product-list"))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_superuser_can_read_active_catalog_from_all_organizations(self):
+        superuser = get_user_model().objects.create_superuser(username="root", password="test-pass")
+        self.client.force_authenticate(superuser)
+
+        response = self.client.get(reverse("product-list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([product["id"] for product in response.json()], [self.first_product.id, self.second_product.id])
