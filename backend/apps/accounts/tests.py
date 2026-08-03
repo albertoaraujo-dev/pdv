@@ -139,6 +139,14 @@ class SessionAuthTests(TestCase):
         self.assertIn("/api/tenants/users/", schema["paths"])
         self.assertIn("/api/auth/login/", schema["paths"])
 
+    def test_api_docs_page_lists_initial_contract(self):
+        response = self.client.get("/api/docs/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "PDV Final API")
+        self.assertContains(response, "/api/schema/")
+        self.assertContains(response, "/api/catalog/products/")
+
     def test_me_requires_authentication(self):
         response = self.client.get(reverse("accounts:me"))
 
