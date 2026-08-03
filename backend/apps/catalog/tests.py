@@ -119,6 +119,9 @@ class CatalogApiTests(TestCase):
         UserProfile.objects.create(user=self.operator, organization=self.first_org, role=UserProfile.Role.OPERATOR)
         UserStoreAccess.objects.create(profile=self.operator.profile, store=self.first_store)
 
+    def results(self, response):
+        return response.json()["results"]
+
     def test_catalog_api_requires_authentication(self):
         response = self.client.get(reverse("product-list"))
 
@@ -131,7 +134,8 @@ class CatalogApiTests(TestCase):
         response = self.client.get(reverse("product-list"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual([product["id"] for product in response.json()], [self.first_product.id, self.other_first_product.id])
+        self.assertEqual(response.json()["count"], 2)
+        self.assertEqual([product["id"] for product in self.results(response)], [self.first_product.id, self.other_first_product.id])
 
     def test_product_detail_outside_user_organization_returns_not_found(self):
         self.client.force_authenticate(self.operator)
@@ -149,8 +153,8 @@ class CatalogApiTests(TestCase):
 
         self.assertEqual(categories_response.status_code, 200)
         self.assertEqual(units_response.status_code, 200)
-        self.assertEqual([category["id"] for category in categories_response.json()], [self.first_category.id])
-        self.assertEqual([unit["id"] for unit in units_response.json()], [self.first_unit.id])
+        self.assertEqual([category["id"] for category in self.results(categories_response)], [self.first_category.id])
+        self.assertEqual([unit["id"] for unit in self.results(units_response)], [self.first_unit.id])
 
     def test_inactive_profile_cannot_read_catalog_api(self):
         self.operator.profile.is_active = False
@@ -168,7 +172,7 @@ class CatalogApiTests(TestCase):
         response = self.client.get(reverse("product-list"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual([product["id"] for product in response.json()], [self.first_product.id, self.other_first_product.id, self.second_product.id])
+        self.assertEqual([product["id"] for product in self.results(response)], [self.first_product.id, self.other_first_product.id, self.second_product.id])
 
     def test_product_search_filters_by_name_sku_or_barcode_inside_user_organization(self):
         Product.objects.create(
@@ -186,9 +190,9 @@ class CatalogApiTests(TestCase):
         sku_response = self.client.get(reverse("product-list"), {"q": "coca"})
         barcode_response = self.client.get(reverse("product-list"), {"q": "7891000000010"})
 
-        self.assertEqual([product["id"] for product in name_response.json()], [self.first_product.id])
-        self.assertEqual([product["id"] for product in sku_response.json()], [self.other_first_product.id])
-        self.assertEqual([product["id"] for product in barcode_response.json()], [self.other_first_product.id])
+        self.assertEqual([product["id"] for product in self.results(name_response)], [self.first_product.id])
+        self.assertEqual([product["id"] for product in self.results(sku_response)], [self.other_first_product.id])
+        self.assertEqual([product["id"] for product in self.results(barcode_response)], [self.other_first_product.id])
 
     def test_product_list_filters_by_sku_barcode_and_category(self):
         self.client.force_authenticate(self.operator)
@@ -197,6 +201,6 @@ class CatalogApiTests(TestCase):
         barcode_response = self.client.get(reverse("product-list"), {"barcode": "7891000000010"})
         category_response = self.client.get(reverse("product-list"), {"category": self.first_category.id})
 
-        self.assertEqual([product["id"] for product in sku_response.json()], [self.other_first_product.id])
-        self.assertEqual([product["id"] for product in barcode_response.json()], [self.other_first_product.id])
-        self.assertEqual([product["id"] for product in category_response.json()], [self.first_product.id, self.other_first_product.id])
+        self.assertEqual([product["id"] for product in self.results(sku_response)], [self.other_first_product.id])
+        self.assertEqual([product["id"] for product in self.results(barcode_response)], [self.other_first_product.id])
+        self.assertEqual([product["id"] for product in self.results(category_response)], [self.first_product.id, self.other_first_product.id])

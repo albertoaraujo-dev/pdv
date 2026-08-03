@@ -215,6 +215,9 @@ class TenantUserApiTests(TestCase):
         UserProfile.objects.create(user=self.other_operator, organization=self.second_org, role=UserProfile.Role.OPERATOR)
         UserStoreAccess.objects.create(profile=self.other_operator.profile, store=self.second_store)
 
+    def results(self, response):
+        return response.json()["results"]
+
     def test_tenant_user_api_requires_authentication(self):
         response = self.client.get(reverse("tenant-user-list"))
 
@@ -235,11 +238,11 @@ class TenantUserApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
-            [user["username"] for user in response.json()],
+            [user["username"] for user in self.results(response)],
             ["admin-org", "cashier", "manager", "operator"],
         )
-        self.assertNotIn("password", response.json()[0])
-        self.assertEqual(response.json()[0]["profile"]["organization_name"], "Primeira")
+        self.assertNotIn("password", self.results(response)[0])
+        self.assertEqual(self.results(response)[0]["profile"]["organization_name"], "Primeira")
 
     def test_manager_lists_only_subordinate_users(self):
         self.client.force_authenticate(self.manager)
@@ -247,7 +250,7 @@ class TenantUserApiTests(TestCase):
         response = self.client.get(reverse("tenant-user-list"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual([user["username"] for user in response.json()], ["cashier", "operator"])
+        self.assertEqual([user["username"] for user in self.results(response)], ["cashier", "operator"])
 
     def test_detail_outside_manager_scope_returns_not_found(self):
         self.client.force_authenticate(self.manager)
@@ -265,7 +268,7 @@ class TenantUserApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
-            [user["username"] for user in response.json()],
+            [user["username"] for user in self.results(response)],
             ["admin-org", "cashier", "manager", "operator", "other-operator", "root"],
         )
 
@@ -288,13 +291,17 @@ class TenantOrganizationStoreApiTests(TestCase):
         UserProfile.objects.create(user=self.operator, organization=self.first_org, role=UserProfile.Role.OPERATOR)
         UserStoreAccess.objects.create(profile=self.operator.profile, store=self.first_store)
 
+    def results(self, response):
+        return response.json()["results"]
+
     def test_admin_lists_only_own_organization(self):
         self.client.force_authenticate(self.admin_user)
 
         response = self.client.get(reverse("tenant-organization-list"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual([organization["id"] for organization in response.json()], [self.first_org.id])
+        self.assertEqual(response.json()["count"], 1)
+        self.assertEqual([organization["id"] for organization in self.results(response)], [self.first_org.id])
 
     def test_organization_detail_outside_scope_returns_not_found(self):
         self.client.force_authenticate(self.admin_user)
@@ -309,7 +316,7 @@ class TenantOrganizationStoreApiTests(TestCase):
         response = self.client.get(reverse("tenant-store-list"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual([store["id"] for store in response.json()], [self.inactive_store.id, self.first_store.id])
+        self.assertEqual([store["id"] for store in self.results(response)], [self.inactive_store.id, self.first_store.id])
 
     def test_store_detail_outside_scope_returns_not_found(self):
         self.client.force_authenticate(self.manager)
@@ -336,5 +343,5 @@ class TenantOrganizationStoreApiTests(TestCase):
 
         self.assertEqual(organizations_response.status_code, 200)
         self.assertEqual(stores_response.status_code, 200)
-        self.assertEqual([organization["id"] for organization in organizations_response.json()], [self.first_org.id, self.second_org.id])
-        self.assertEqual([store["id"] for store in stores_response.json()], [self.inactive_store.id, self.first_store.id, self.second_store.id])
+        self.assertEqual([organization["id"] for organization in self.results(organizations_response)], [self.first_org.id, self.second_org.id])
+        self.assertEqual([store["id"] for store in self.results(stores_response)], [self.inactive_store.id, self.first_store.id, self.second_store.id])
