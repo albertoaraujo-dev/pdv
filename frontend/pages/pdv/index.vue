@@ -32,6 +32,11 @@ type PaginatedResponse<T> = {
   results: T[]
 }
 
+type CartItem = {
+  product: Product
+  quantity: number
+}
+
 const { data: user } = await useFetch<AuthUser>(`${apiBase}/api/auth/me/`, {
   credentials: 'include',
   headers
@@ -40,8 +45,11 @@ const { data: user } = await useFetch<AuthUser>(`${apiBase}/api/auth/me/`, {
 const isLoggingOut = ref(false)
 const search = ref('')
 const productQuery = ref('')
+const cartItems = ref<CartItem[]>([])
 const displayName = computed(() => user.value?.name || user.value?.username || 'Usuário')
 const storeNames = computed(() => user.value?.stores.map((store) => `${store.code} - ${store.name}`).join(', ') || 'Nenhuma loja ativa')
+const cartTotal = computed(() => cartItems.value.reduce((total, item) => total + Number(item.product.price) * item.quantity, 0))
+const cartItemCount = computed(() => cartItems.value.reduce((total, item) => total + item.quantity, 0))
 const productUrl = computed(() => {
   const params = new URLSearchParams()
   if (productQuery.value) {
@@ -86,6 +94,35 @@ async function logout() {
   } finally {
     await navigateTo('/login?next=/pdv', { external: true })
   }
+}
+
+function addToCart(product: Product) {
+  const item = cartItems.value.find((cartItem) => cartItem.product.id === product.id)
+  if (item) {
+    item.quantity += 1
+    return
+  }
+  cartItems.value.push({ product, quantity: 1 })
+}
+
+function decrementItem(productId: number) {
+  const item = cartItems.value.find((cartItem) => cartItem.product.id === productId)
+  if (!item) {
+    return
+  }
+  if (item.quantity === 1) {
+    cartItems.value = cartItems.value.filter((cartItem) => cartItem.product.id !== productId)
+    return
+  }
+  item.quantity -= 1
+}
+
+function removeItem(productId: number) {
+  cartItems.value = cartItems.value.filter((cartItem) => cartItem.product.id !== productId)
+}
+
+function money(value: number | string) {
+  return Number(value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 </script>
 
@@ -146,12 +183,46 @@ async function logout() {
             <strong>{{ product.name }}</strong>
             <small>{{ product.sku }} · {{ product.category.name }} · {{ product.unit.symbol }}</small>
           </div>
-          <span>R$ {{ product.price }}</span>
+          <div class="product-actions">
+            <span>{{ money(product.price) }}</span>
+            <button type="button" @click="addToCart(product)">
+              Adicionar
+            </button>
+          </div>
         </li>
       </ul>
 
       <small v-if="products" class="muted">{{ products.count }} produto(s) encontrado(s)</small>
     </section>
+
+    <aside class="cart-card">
+      <div>
+        <p class="eyebrow">Carrinho</p>
+        <h2>Venda atual</h2>
+      </div>
+
+      <p v-if="!cartItems.length" class="muted">Nenhum item adicionado.</p>
+
+      <ul v-else class="cart-list">
+        <li v-for="item in cartItems" :key="item.product.id">
+          <div>
+            <strong>{{ item.product.name }}</strong>
+            <small>{{ item.quantity }} x {{ money(item.product.price) }}</small>
+          </div>
+          <div class="quantity-actions">
+            <button type="button" @click="decrementItem(item.product.id)">-</button>
+            <span>{{ item.quantity }}</span>
+            <button type="button" @click="addToCart(item.product)">+</button>
+            <button type="button" @click="removeItem(item.product.id)">Remover</button>
+          </div>
+        </li>
+      </ul>
+
+      <div class="cart-total">
+        <span>{{ cartItemCount }} item(ns)</span>
+        <strong>{{ money(cartTotal) }}</strong>
+      </div>
+    </aside>
   </main>
 </template>
 
@@ -188,7 +259,8 @@ h1 {
 
 .user-card,
 .status-card,
-.products-card {
+.products-card,
+.cart-card {
   border: 1px solid #e2e8f0;
   border-radius: 20px;
   background: #ffffff;
@@ -238,6 +310,14 @@ button:disabled {
 }
 
 .products-card {
+  max-width: 960px;
+  display: grid;
+  gap: 18px;
+  margin-bottom: 24px;
+  padding: 24px;
+}
+
+.cart-card {
   max-width: 960px;
   display: grid;
   gap: 18px;
@@ -296,9 +376,51 @@ input {
   color: #64748b;
 }
 
-.product-list span {
+.product-actions,
+.quantity-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.product-list span,
+.cart-total strong {
   font-weight: 900;
   white-space: nowrap;
+}
+
+.cart-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cart-list li {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.cart-list small {
+  color: #64748b;
+}
+
+.quantity-actions button {
+  margin-top: 0;
+}
+
+.cart-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e2e8f0;
 }
 
 .status-card p {
