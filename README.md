@@ -68,6 +68,7 @@ docker compose restart frontend
 - Hardening local de cookies, CSRF, sessão, headers e IP auditado.
 - Fase 3 de autenticação, autorização e segurança concluída e validada.
 - Fase 4 iniciada com API DRF de leitura do catálogo em `/api/catalog/`.
+- API DRF administrativa de leitura de usuários disponível em `/api/tenants/users/`.
 
 ## Observações
 

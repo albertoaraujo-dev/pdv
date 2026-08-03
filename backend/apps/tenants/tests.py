@@ -3,6 +3,8 @@ from django.contrib import admin
 from django.core.exceptions import ValidationError
 from django.test import RequestFactory
 from django.test import TestCase
+from django.urls import reverse
+from rest_framework.test import APIClient
 
 from .admin import OrganizationAdmin, StoreAdmin, UserAdmin, UserProfileAdmin, UserStoreAccessAdmin
 from .models import Organization, Store, UserProfile, UserStoreAccess
@@ -189,3 +191,78 @@ class TenantAdminScopeTests(TestCase):
         formfield = model_admin.formfield_for_foreignkey(db_field, self.request_for(self.manager))
 
         self.assertEqual(list(formfield.queryset), [self.operator_profile])
+
+
+class TenantUserApiTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.first_org = Organization.objects.create(name="Primeira")
+        self.second_org = Organization.objects.create(name="Segunda")
+        self.first_store = Store.objects.create(organization=self.first_org, name="Matriz", code="M01")
+        self.second_store = Store.objects.create(organization=self.second_org, name="Filial", code="F01")
+        self.admin_user = get_user_model().objects.create_user(username="admin-org", password="test-pass", is_staff=True)
+        UserProfile.objects.create(user=self.admin_user, organization=self.first_org, role=UserProfile.Role.ADMIN)
+        self.manager = get_user_model().objects.create_user(username="manager", password="test-pass", is_staff=True)
+        UserProfile.objects.create(user=self.manager, organization=self.first_org, role=UserProfile.Role.MANAGER)
+        UserStoreAccess.objects.create(profile=self.manager.profile, store=self.first_store)
+        self.operator = get_user_model().objects.create_user(username="operator", password="test-pass")
+        UserProfile.objects.create(user=self.operator, organization=self.first_org, role=UserProfile.Role.OPERATOR)
+        UserStoreAccess.objects.create(profile=self.operator.profile, store=self.first_store)
+        self.cashier = get_user_model().objects.create_user(username="cashier", password="test-pass")
+        UserProfile.objects.create(user=self.cashier, organization=self.first_org, role=UserProfile.Role.CASHIER)
+        UserStoreAccess.objects.create(profile=self.cashier.profile, store=self.first_store)
+        self.other_operator = get_user_model().objects.create_user(username="other-operator", password="test-pass")
+        UserProfile.objects.create(user=self.other_operator, organization=self.second_org, role=UserProfile.Role.OPERATOR)
+        UserStoreAccess.objects.create(profile=self.other_operator.profile, store=self.second_store)
+
+    def test_tenant_user_api_requires_authentication(self):
+        response = self.client.get(reverse("tenant-user-list"))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_operator_cannot_read_tenant_users(self):
+        self.client.force_authenticate(self.operator)
+
+        response = self.client.get(reverse("tenant-user-list"))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_admin_lists_users_from_own_organization(self):
+        self.client.force_authenticate(self.admin_user)
+
+        response = self.client.get(reverse("tenant-user-list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [user["username"] for user in response.json()],
+            ["admin-org", "cashier", "manager", "operator"],
+        )
+        self.assertNotIn("password", response.json()[0])
+        self.assertEqual(response.json()[0]["profile"]["organization_name"], "Primeira")
+
+    def test_manager_lists_only_subordinate_users(self):
+        self.client.force_authenticate(self.manager)
+
+        response = self.client.get(reverse("tenant-user-list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([user["username"] for user in response.json()], ["cashier", "operator"])
+
+    def test_detail_outside_manager_scope_returns_not_found(self):
+        self.client.force_authenticate(self.manager)
+
+        response = self.client.get(reverse("tenant-user-detail", args=[self.admin_user.id]))
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_superuser_lists_all_users(self):
+        superuser = get_user_model().objects.create_superuser(username="root", password="test-pass")
+        self.client.force_authenticate(superuser)
+
+        response = self.client.get(reverse("tenant-user-list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [user["username"] for user in response.json()],
+            ["admin-org", "cashier", "manager", "operator", "other-operator", "root"],
+        )
