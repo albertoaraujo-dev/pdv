@@ -123,6 +123,7 @@ class CatalogApiTests(TestCase):
         response = self.client.get(reverse("product-list"))
 
         self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["code"], "not_authenticated")
 
     def test_product_list_is_scoped_to_user_organization_and_active_records(self):
         self.client.force_authenticate(self.operator)
@@ -138,6 +139,7 @@ class CatalogApiTests(TestCase):
         response = self.client.get(reverse("product-detail", args=[self.second_product.id]))
 
         self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["code"], "not_found")
 
     def test_category_and_unit_lists_are_scoped_to_user_organization(self):
         self.client.force_authenticate(self.operator)

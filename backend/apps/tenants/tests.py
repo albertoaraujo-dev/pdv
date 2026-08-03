@@ -226,6 +226,7 @@ class TenantUserApiTests(TestCase):
         response = self.client.get(reverse("tenant-user-list"))
 
         self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["code"], "permission_denied")
 
     def test_admin_lists_users_from_own_organization(self):
         self.client.force_authenticate(self.admin_user)
@@ -254,6 +255,7 @@ class TenantUserApiTests(TestCase):
         response = self.client.get(reverse("tenant-user-detail", args=[self.admin_user.id]))
 
         self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["code"], "not_found")
 
     def test_superuser_lists_all_users(self):
         superuser = get_user_model().objects.create_superuser(username="root", password="test-pass")
