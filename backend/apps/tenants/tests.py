@@ -266,3 +266,73 @@ class TenantUserApiTests(TestCase):
             [user["username"] for user in response.json()],
             ["admin-org", "cashier", "manager", "operator", "other-operator", "root"],
         )
+
+
+class TenantOrganizationStoreApiTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.first_org = Organization.objects.create(name="Primeira")
+        self.second_org = Organization.objects.create(name="Segunda")
+        self.first_store = Store.objects.create(organization=self.first_org, name="Matriz", code="M01")
+        self.second_store = Store.objects.create(organization=self.second_org, name="Filial", code="F01")
+        self.inactive_store = Store.objects.create(organization=self.first_org, name="Inativa", code="I01", is_active=False)
+        self.admin_user = get_user_model().objects.create_user(username="admin-org", password="test-pass", is_staff=True)
+        UserProfile.objects.create(user=self.admin_user, organization=self.first_org, role=UserProfile.Role.ADMIN)
+        self.manager = get_user_model().objects.create_user(username="manager", password="test-pass", is_staff=True)
+        UserProfile.objects.create(user=self.manager, organization=self.first_org, role=UserProfile.Role.MANAGER)
+        UserStoreAccess.objects.create(profile=self.manager.profile, store=self.first_store)
+        UserStoreAccess.objects.create(profile=self.manager.profile, store=self.inactive_store)
+        self.operator = get_user_model().objects.create_user(username="operator", password="test-pass")
+        UserProfile.objects.create(user=self.operator, organization=self.first_org, role=UserProfile.Role.OPERATOR)
+        UserStoreAccess.objects.create(profile=self.operator.profile, store=self.first_store)
+
+    def test_admin_lists_only_own_organization(self):
+        self.client.force_authenticate(self.admin_user)
+
+        response = self.client.get(reverse("tenant-organization-list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([organization["id"] for organization in response.json()], [self.first_org.id])
+
+    def test_organization_detail_outside_scope_returns_not_found(self):
+        self.client.force_authenticate(self.admin_user)
+
+        response = self.client.get(reverse("tenant-organization-detail", args=[self.second_org.id]))
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_manager_lists_only_visible_stores(self):
+        self.client.force_authenticate(self.manager)
+
+        response = self.client.get(reverse("tenant-store-list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([store["id"] for store in response.json()], [self.inactive_store.id, self.first_store.id])
+
+    def test_store_detail_outside_scope_returns_not_found(self):
+        self.client.force_authenticate(self.manager)
+
+        response = self.client.get(reverse("tenant-store-detail", args=[self.second_store.id]))
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_operator_cannot_read_organization_or_store_admin_api(self):
+        self.client.force_authenticate(self.operator)
+
+        organizations_response = self.client.get(reverse("tenant-organization-list"))
+        stores_response = self.client.get(reverse("tenant-store-list"))
+
+        self.assertEqual(organizations_response.status_code, 403)
+        self.assertEqual(stores_response.status_code, 403)
+
+    def test_superuser_lists_all_organizations_and_stores(self):
+        superuser = get_user_model().objects.create_superuser(username="root", password="test-pass")
+        self.client.force_authenticate(superuser)
+
+        organizations_response = self.client.get(reverse("tenant-organization-list"))
+        stores_response = self.client.get(reverse("tenant-store-list"))
+
+        self.assertEqual(organizations_response.status_code, 200)
+        self.assertEqual(stores_response.status_code, 200)
+        self.assertEqual([organization["id"] for organization in organizations_response.json()], [self.first_org.id, self.second_org.id])
+        self.assertEqual([store["id"] for store in stores_response.json()], [self.inactive_store.id, self.first_store.id, self.second_store.id])

@@ -1,9 +1,10 @@
 from django.contrib.auth import get_user_model
 from rest_framework import permissions, viewsets
 
-from apps.accounts.policies import can_access_admin, get_manageable_users, is_inactive_for_login
+from apps.accounts.policies import can_access_admin, get_allowed_stores, get_manageable_users, get_user_organization, get_visible_stores, is_inactive_for_login
 
-from .serializers import TenantUserSerializer
+from .models import Organization, Store
+from .serializers import OrganizationSerializer, StoreSerializer, TenantUserSerializer
 
 
 class CanReadTenantUsers(permissions.BasePermission):
@@ -22,3 +23,32 @@ class TenantUserViewSet(viewsets.ReadOnlyModelViewSet):
         if user.is_superuser:
             return queryset
         return queryset.filter(pk__in=get_manageable_users(user))
+
+
+class OrganizationViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = OrganizationSerializer
+    permission_classes = [CanReadTenantUsers]
+
+    def get_queryset(self):
+        queryset = Organization.objects.order_by("name")
+        user = self.request.user
+        if user.is_superuser:
+            return queryset
+        organization = get_user_organization(user)
+        if not organization:
+            return queryset.none()
+        return queryset.filter(pk=organization.pk)
+
+
+class StoreViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = StoreSerializer
+    permission_classes = [CanReadTenantUsers]
+
+    def get_queryset(self):
+        queryset = Store.objects.select_related("organization").order_by("organization__name", "name")
+        user = self.request.user
+        if user.is_superuser:
+            return queryset
+        if can_access_admin(user):
+            return queryset.filter(pk__in=get_visible_stores(user))
+        return queryset.filter(pk__in=get_allowed_stores(user))

@@ -1,13 +1,27 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
-from .models import Store, UserProfile
+from .models import Organization, Store, UserProfile
+
+
+class OrganizationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Organization
+        fields = ["id", "name", "legal_name", "document", "is_active"]
 
 
 class UserStoreSerializer(serializers.ModelSerializer):
     class Meta:
         model = Store
         fields = ["id", "name", "code", "is_active"]
+
+
+class StoreSerializer(serializers.ModelSerializer):
+    organization_name = serializers.CharField(source="organization.name", read_only=True)
+
+    class Meta:
+        model = Store
+        fields = ["id", "organization", "organization_name", "name", "code", "is_active"]
 
 
 class UserProfileSerializer(serializers.ModelSerializer):

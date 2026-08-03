@@ -69,6 +69,7 @@ docker compose restart frontend
 - Fase 3 de autenticação, autorização e segurança concluída e validada.
 - Fase 4 iniciada com API DRF de leitura do catálogo em `/api/catalog/`.
 - API DRF administrativa de leitura de usuários disponível em `/api/tenants/users/`.
+- API DRF administrativa de leitura de organizações e lojas disponível em `/api/tenants/organizations/` e `/api/tenants/stores/`.
 
 ## Observações
 
