@@ -60,13 +60,13 @@ async function submitLogin() {
       return
     }
 
-    if (user.permissions.can_access_admin) {
-      await navigateTo(`${config.public.apiBase}/admin/`, { external: true })
+    if (user.permissions.can_access_pos) {
+      await navigateTo('/pdv')
       return
     }
 
-    if (user.permissions.can_access_pos) {
-      await navigateTo('/pdv')
+    if (user.permissions.can_access_admin) {
+      await navigateTo(`${config.public.apiBase}/admin/`, { external: true })
       return
     }
 
