@@ -97,6 +97,15 @@ class CatalogApiTests(TestCase):
             sku="SAND-001",
             price="12.00",
         )
+        self.other_first_product = Product.objects.create(
+            organization=self.first_org,
+            category=self.first_category,
+            unit=self.first_unit,
+            name="Coca Cola",
+            sku="COCA-001",
+            barcode="7891000000010",
+            price="7.50",
+        )
         self.inactive_product = Product.objects.create(
             organization=self.first_org,
             category=self.first_category,
@@ -121,7 +130,7 @@ class CatalogApiTests(TestCase):
         response = self.client.get(reverse("product-list"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual([product["id"] for product in response.json()], [self.first_product.id])
+        self.assertEqual([product["id"] for product in response.json()], [self.first_product.id, self.other_first_product.id])
 
     def test_product_detail_outside_user_organization_returns_not_found(self):
         self.client.force_authenticate(self.operator)
@@ -157,4 +166,35 @@ class CatalogApiTests(TestCase):
         response = self.client.get(reverse("product-list"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual([product["id"] for product in response.json()], [self.first_product.id, self.second_product.id])
+        self.assertEqual([product["id"] for product in response.json()], [self.first_product.id, self.other_first_product.id, self.second_product.id])
+
+    def test_product_search_filters_by_name_sku_or_barcode_inside_user_organization(self):
+        Product.objects.create(
+            organization=self.second_org,
+            category=self.second_category,
+            unit=self.second_unit,
+            name="Agua importada",
+            sku="AGUA-IMPORT",
+            barcode="7891000000010",
+            price="20.00",
+        )
+        self.client.force_authenticate(self.operator)
+
+        name_response = self.client.get(reverse("product-list"), {"q": "agua"})
+        sku_response = self.client.get(reverse("product-list"), {"q": "coca"})
+        barcode_response = self.client.get(reverse("product-list"), {"q": "7891000000010"})
+
+        self.assertEqual([product["id"] for product in name_response.json()], [self.first_product.id])
+        self.assertEqual([product["id"] for product in sku_response.json()], [self.other_first_product.id])
+        self.assertEqual([product["id"] for product in barcode_response.json()], [self.other_first_product.id])
+
+    def test_product_list_filters_by_sku_barcode_and_category(self):
+        self.client.force_authenticate(self.operator)
+
+        sku_response = self.client.get(reverse("product-list"), {"sku": " coca-001 "})
+        barcode_response = self.client.get(reverse("product-list"), {"barcode": "7891000000010"})
+        category_response = self.client.get(reverse("product-list"), {"category": self.first_category.id})
+
+        self.assertEqual([product["id"] for product in sku_response.json()], [self.other_first_product.id])
+        self.assertEqual([product["id"] for product in barcode_response.json()], [self.other_first_product.id])
+        self.assertEqual([product["id"] for product in category_response.json()], [self.first_product.id, self.other_first_product.id])

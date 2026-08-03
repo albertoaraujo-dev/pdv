@@ -1,3 +1,4 @@
+from django.db.models import Q
 from rest_framework import permissions, viewsets
 
 from apps.accounts.policies import can_access_admin, can_access_pos, get_user_organization, is_inactive_for_login
@@ -44,3 +45,20 @@ class UnitViewSet(TenantCatalogViewSet):
 class ProductViewSet(TenantCatalogViewSet):
     queryset = Product.objects.select_related("category", "unit")
     serializer_class = ProductSerializer
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        q = self.request.query_params.get("q", "").strip()
+        sku = self.request.query_params.get("sku", "").strip()
+        barcode = self.request.query_params.get("barcode", "").strip()
+        category = self.request.query_params.get("category", "").strip()
+
+        if q:
+            queryset = queryset.filter(Q(name__icontains=q) | Q(sku__icontains=q) | Q(barcode__icontains=q))
+        if sku:
+            queryset = queryset.filter(sku__iexact=sku)
+        if barcode:
+            queryset = queryset.filter(barcode__iexact=barcode)
+        if category:
+            queryset = queryset.filter(category_id=category)
+        return queryset
