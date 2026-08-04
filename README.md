@@ -83,7 +83,7 @@ docker compose restart frontend
 ## Estrutura
 
 - `backend/`: Django e API
-- `frontend/`: Nuxt 3
+- `frontend/`: Nuxt 4
 - `deploy/`: arquivos futuros de deploy
 - `docs/`: documentacao tecnica
 - `infra/`: infraestrutura local/futura
