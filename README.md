@@ -1,6 +1,6 @@
 # PDV Final
 
-Base para ERP + PDV com Django, Django REST Framework, Nuxt 3, PostgreSQL e Redis.
+Base para ERP + PDV com Django, Django REST Framework, Nuxt 4, PostgreSQL e Redis.
 
 ## Requisitos
 
