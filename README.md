@@ -71,6 +71,8 @@ docker compose restart frontend
 - API DRF administrativa de leitura de usuários disponível em `/api/tenants/users/`.
 - API DRF administrativa de leitura de organizações e lojas disponível em `/api/tenants/organizations/` e `/api/tenants/stores/`.
 - Schema OpenAPI inicial disponível em `/api/schema/`.
+- Página inicial de documentação da API disponível em `/api/docs/`.
+- Fase 4 de API base com DRF concluída e validada.
 
 ## Observações
 
