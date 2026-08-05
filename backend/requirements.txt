@@ -2,5 +2,6 @@ Django==5.2.4
 djangorestframework==3.16.0
 psycopg[binary]==3.2.9
 django-cors-headers==4.7.0
+django-unfold==0.102.0
 redis==6.2.0
 gunicorn==23.0.0

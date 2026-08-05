@@ -4,6 +4,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.contrib.auth.forms import UserCreationForm
 from django import forms
+from unfold.admin import ModelAdmin
 
 from apps.accounts.models import AuthEvent, record_auth_event
 from apps.accounts.policies import (
@@ -86,7 +87,7 @@ except admin.sites.NotRegistered:
 
 
 @admin.register(User)
-class UserAdmin(DjangoUserAdmin):
+class UserAdmin(DjangoUserAdmin, ModelAdmin):
     add_form = ManagedUserCreationForm
 
     def get_queryset(self, request):
@@ -163,7 +164,7 @@ class UserAdmin(DjangoUserAdmin):
 
 
 @admin.register(Organization)
-class OrganizationAdmin(admin.ModelAdmin):
+class OrganizationAdmin(ModelAdmin):
     list_display = ["name", "document", "is_active", "created_at"]
     list_filter = ["is_active"]
     search_fields = ["name", "legal_name", "document"]
@@ -185,7 +186,7 @@ class OrganizationAdmin(admin.ModelAdmin):
 
 
 @admin.register(Store)
-class StoreAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
+class StoreAdmin(TenantScopedAdminMixin, ModelAdmin):
     list_display = ["name", "code", "organization", "is_active"]
     list_filter = ["organization", "is_active"]
     search_fields = ["name", "code", "organization__name"]
@@ -203,7 +204,7 @@ class StoreAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
 
 
 @admin.register(UserProfile)
-class UserProfileAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
+class UserProfileAdmin(TenantScopedAdminMixin, ModelAdmin):
     list_display = ["user", "organization", "role", "must_change_password", "is_active"]
     list_filter = ["organization", "role", "is_active"]
     tenant_list_filter = ["role", "is_active"]
@@ -238,7 +239,7 @@ class UserProfileAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
 
 
 @admin.register(UserStoreAccess)
-class UserStoreAccessAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
+class UserStoreAccessAdmin(TenantScopedAdminMixin, ModelAdmin):
     list_display = ["profile", "store", "is_active"]
     list_filter = ["store__organization", "store", "is_active"]
     tenant_field = "profile__organization"

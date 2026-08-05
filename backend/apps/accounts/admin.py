@@ -1,14 +1,17 @@
 from django.contrib import admin
-from django.contrib.admin.forms import AdminAuthenticationForm
+from django.contrib.auth.admin import GroupAdmin as DjangoGroupAdmin
+from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
+from unfold.admin import ModelAdmin
+from unfold.forms import AuthenticationForm
 
 from .models import AuthEvent, LoginAttempt, is_login_locked, record_login_attempt
 from .policies import is_inactive_for_login, must_change_password
 
 
-class AuditedAdminAuthenticationForm(AdminAuthenticationForm):
+class AuditedAdminAuthenticationForm(AuthenticationForm):
     error_messages = {
-        **AdminAuthenticationForm.error_messages,
+        **AuthenticationForm.error_messages,
         "locked": "Muitas tentativas inválidas. Tente novamente em alguns minutos.",
     }
 
@@ -40,8 +43,19 @@ class AuditedAdminAuthenticationForm(AdminAuthenticationForm):
 admin.site.login_form = AuditedAdminAuthenticationForm
 
 
+try:
+    admin.site.unregister(Group)
+except admin.sites.NotRegistered:
+    pass
+
+
+@admin.register(Group)
+class GroupAdmin(DjangoGroupAdmin, ModelAdmin):
+    pass
+
+
 @admin.register(LoginAttempt)
-class LoginAttemptAdmin(admin.ModelAdmin):
+class LoginAttemptAdmin(ModelAdmin):
     list_display = ["created_at", "username", "ip_address", "status", "reason"]
     list_filter = ["status", "created_at"]
     search_fields = ["username", "normalized_username", "ip_address", "user_agent", "reason"]
@@ -64,7 +78,7 @@ class LoginAttemptAdmin(admin.ModelAdmin):
 
 
 @admin.register(AuthEvent)
-class AuthEventAdmin(admin.ModelAdmin):
+class AuthEventAdmin(ModelAdmin):
     list_display = ["created_at", "username", "event_type", "ip_address", "reason"]
     list_filter = ["event_type", "created_at"]
     search_fields = ["username", "ip_address", "user_agent", "reason"]

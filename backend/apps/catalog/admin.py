@@ -1,4 +1,5 @@
 from django.contrib import admin
+from unfold.admin import ModelAdmin
 
 from apps.tenants.admin import TenantScopedAdminMixin, get_user_organization
 
@@ -6,21 +7,21 @@ from .models import Category, Product, Unit
 
 
 @admin.register(Category)
-class CategoryAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
+class CategoryAdmin(TenantScopedAdminMixin, ModelAdmin):
     list_display = ["name", "organization", "is_active"]
     list_filter = ["organization", "is_active"]
     search_fields = ["name", "organization__name"]
 
 
 @admin.register(Unit)
-class UnitAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
+class UnitAdmin(TenantScopedAdminMixin, ModelAdmin):
     list_display = ["symbol", "name", "organization", "is_active"]
     list_filter = ["organization", "is_active"]
     search_fields = ["symbol", "name", "organization__name"]
 
 
 @admin.register(Product)
-class ProductAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
+class ProductAdmin(TenantScopedAdminMixin, ModelAdmin):
     list_display = ["name", "sku", "organization", "category", "unit", "price", "is_active"]
     list_filter = ["organization", "category", "unit", "is_active"]
     search_fields = ["name", "sku", "barcode", "organization__name"]
