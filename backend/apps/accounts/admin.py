@@ -41,6 +41,9 @@ class AuditedAdminAuthenticationForm(AuthenticationForm):
 
 
 admin.site.login_form = AuditedAdminAuthenticationForm
+admin.site.site_header = "PDV Final"
+admin.site.site_title = "PDV Final Admin"
+admin.site.index_title = "Painel administrativo"
 
 
 try:

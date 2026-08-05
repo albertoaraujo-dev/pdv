@@ -1,6 +1,9 @@
 from pathlib import Path
 import os
 
+from django.urls import reverse_lazy
+from django.utils.translation import gettext_lazy as _
+
 BASE_DIR = Path(__file__).resolve().parents[2]
 
 
@@ -49,7 +52,7 @@ ROOT_URLCONF = "config.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -122,4 +125,116 @@ REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "config.api_exceptions.api_exception_handler",
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": env_int("API_PAGE_SIZE", 50),
+}
+
+UNFOLD = {
+    "SITE_TITLE": "PDV Final Admin",
+    "SITE_HEADER": "PDV Final",
+    "SITE_SUBHEADER": "Gestão da plataforma",
+    "SITE_SYMBOL": "storefront",
+    "SITE_URL": "/admin/",
+    "SHOW_HISTORY": True,
+    "SHOW_VIEW_ON_SITE": False,
+    "SHOW_BACK_BUTTON": False,
+    "BORDER_RADIUS": "8px",
+    "COLORS": {
+        "primary": {
+            "50": "oklch(97.7% .014 308.299)",
+            "100": "oklch(94.6% .033 307.174)",
+            "200": "oklch(90.2% .063 306.703)",
+            "300": "oklch(82.7% .119 306.383)",
+            "400": "oklch(71.4% .203 305.504)",
+            "500": "oklch(62.7% .265 303.9)",
+            "600": "oklch(55.8% .288 302.321)",
+            "700": "oklch(49.6% .265 301.924)",
+            "800": "oklch(43.8% .218 303.724)",
+            "900": "oklch(38.1% .176 304.987)",
+            "950": "oklch(29.1% .149 302.717)",
+        },
+    },
+    "SIDEBAR": {
+        "show_search": True,
+        "show_all_applications": False,
+        "navigation": [
+            {
+                "title": _("Gestão"),
+                "separator": True,
+                "collapsible": False,
+                "items": [
+                    {
+                        "title": _("Início"),
+                        "icon": "dashboard",
+                        "link": reverse_lazy("admin:index"),
+                    },
+                    {
+                        "title": _("Organizações"),
+                        "icon": "corporate_fare",
+                        "link": reverse_lazy("admin:tenants_organization_changelist"),
+                    },
+                    {
+                        "title": _("Lojas"),
+                        "icon": "store",
+                        "link": reverse_lazy("admin:tenants_store_changelist"),
+                    },
+                    {
+                        "title": _("Usuários"),
+                        "icon": "group",
+                        "link": reverse_lazy("admin:auth_user_changelist"),
+                    },
+                    {
+                        "title": _("Perfis"),
+                        "icon": "badge",
+                        "link": reverse_lazy("admin:tenants_userprofile_changelist"),
+                    },
+                ],
+            },
+            {
+                "title": _("Catálogo"),
+                "separator": True,
+                "collapsible": False,
+                "items": [
+                    {
+                        "title": _("Produtos"),
+                        "icon": "inventory_2",
+                        "link": reverse_lazy("admin:catalog_product_changelist"),
+                    },
+                    {
+                        "title": _("Categorias"),
+                        "icon": "category",
+                        "link": reverse_lazy("admin:catalog_category_changelist"),
+                    },
+                    {
+                        "title": _("Unidades"),
+                        "icon": "straighten",
+                        "link": reverse_lazy("admin:catalog_unit_changelist"),
+                    },
+                ],
+            },
+            {
+                "title": _("Segurança"),
+                "separator": True,
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": _("Grupos"),
+                        "icon": "groups",
+                        "link": reverse_lazy("admin:auth_group_changelist"),
+                        "permission": lambda request: request.user.is_superuser,
+                    },
+                    {
+                        "title": _("Tentativas de login"),
+                        "icon": "login",
+                        "link": reverse_lazy("admin:accounts_loginattempt_changelist"),
+                        "permission": lambda request: request.user.is_superuser,
+                    },
+                    {
+                        "title": _("Eventos de auth"),
+                        "icon": "shield_lock",
+                        "link": reverse_lazy("admin:accounts_authevent_changelist"),
+                        "permission": lambda request: request.user.is_superuser,
+                    },
+                ],
+            },
+        ],
+    },
 }
