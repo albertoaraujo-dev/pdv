@@ -1,0 +1,7 @@
+{% extends "admin/change_form.html" %}
+{% load i18n %}
+
+{% block form_top %}
+    {% trans "Depois de criar o usuário, você poderá editar mais opções de acesso." as message %}
+    {% include "unfold/helpers/messages/info.html" with message=message %}
+{% endblock %}

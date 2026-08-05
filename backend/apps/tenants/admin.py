@@ -39,14 +39,23 @@ admin.site.has_permission = admin_has_permission
 
 class ManagedUserCreationForm(UserCreationForm):
     role = forms.ChoiceField(label="Perfil", choices=[])
+    stores = forms.ModelMultipleChoiceField(
+        label="Lojas permitidas",
+        queryset=Store.objects.none(),
+        required=True,
+        widget=forms.CheckboxSelectMultiple,
+    )
 
     class Meta(UserCreationForm.Meta):
         model = User
-        fields = ("username", "first_name", "last_name", "email", "role")
+        fields = ("username", "first_name", "last_name", "email", "role", "stores")
 
     def __init__(self, *args, **kwargs):
+        request = kwargs.pop("request", None)
         super().__init__(*args, **kwargs)
         self.fields["role"].choices = [choice for choice in UserProfile.Role.choices if choice[0] in SUBORDINATE_ROLES]
+        if request:
+            self.fields["stores"].queryset = get_allowed_stores(request.user)
 
 
 class TenantScopedAdminMixin:
@@ -103,7 +112,7 @@ class UserAdmin(DjangoUserAdmin, ModelAdmin):
             return (
                 (None, {"fields": ("username", "password1", "password2")}),
                 ("Informações pessoais", {"fields": ("first_name", "last_name", "email")}),
-                ("Acesso operacional", {"fields": ("role",)}),
+                ("Acesso operacional", {"fields": ("role", "stores")}),
             )
         return (
             (None, {"fields": ("username", "password")}),
@@ -122,7 +131,16 @@ class UserAdmin(DjangoUserAdmin, ModelAdmin):
     def get_form(self, request, obj=None, change=False, **kwargs):
         if not request.user.is_superuser and obj is None:
             kwargs["form"] = self.add_form
-        return super().get_form(request, obj, **kwargs)
+        form_class = super().get_form(request, obj, **kwargs)
+        if request.user.is_superuser or obj is not None:
+            return form_class
+
+        class RequestManagedUserCreationForm(form_class):
+            def __init__(self, *args, **form_kwargs):
+                form_kwargs["request"] = request
+                super().__init__(*args, **form_kwargs)
+
+        return RequestManagedUserCreationForm
 
     def has_add_permission(self, request):
         return request.user.is_superuser or is_manager(request.user)
@@ -157,10 +175,13 @@ class UserAdmin(DjangoUserAdmin, ModelAdmin):
         organization = get_user_organization(request.user)
         if organization and not change:
             role = form.cleaned_data.get("role", UserProfile.Role.OPERATOR) if form else UserProfile.Role.OPERATOR
-            UserProfile.objects.get_or_create(
+            profile, _created = UserProfile.objects.get_or_create(
                 user=obj,
                 defaults={"organization": organization, "role": role, "must_change_password": True},
             )
+            if form:
+                for store in form.cleaned_data.get("stores", []):
+                    UserStoreAccess.objects.get_or_create(profile=profile, store=store)
 
 
 @admin.register(Organization)

@@ -157,14 +157,16 @@ class TenantAdminScopeTests(TestCase):
 
         fieldsets = model_admin.get_fieldsets(request, obj=None)
         form_class = model_admin.get_form(request, obj=None, change=False)
-        role_choices = dict(form_class().fields["role"].choices)
+        form = form_class()
+        role_choices = dict(form.fields["role"].choices)
 
-        self.assertIn(("Acesso operacional", {"fields": ("role",)}), fieldsets)
+        self.assertIn(("Acesso operacional", {"fields": ("role", "stores")}), fieldsets)
         self.assertEqual(set(role_choices), {UserProfile.Role.OPERATOR, UserProfile.Role.CASHIER, UserProfile.Role.FISCAL})
+        self.assertEqual(list(form.fields["stores"].queryset), [self.first_store])
 
     def test_manager_created_user_uses_selected_subordinate_role(self):
         class FormStub:
-            cleaned_data = {"role": UserProfile.Role.CASHIER}
+            cleaned_data = {"role": UserProfile.Role.CASHIER, "stores": [self.first_store]}
 
         model_admin = UserAdmin(get_user_model(), admin.site)
         request = self.request_for(self.manager)
@@ -175,6 +177,7 @@ class TenantAdminScopeTests(TestCase):
 
         self.assertEqual(user.profile.role, UserProfile.Role.CASHIER)
         self.assertTrue(user.profile.must_change_password)
+        self.assertTrue(UserStoreAccess.objects.filter(profile=user.profile, store=self.first_store).exists())
 
     def test_manager_only_sees_store_accesses_from_subordinates(self):
         UserStoreAccess.objects.create(profile=self.admin_profile, store=self.first_store)
