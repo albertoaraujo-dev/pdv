@@ -89,6 +89,18 @@ class TenantScopedAdminMixin:
             kwargs["queryset"] = get_manageable_profiles(request.user)
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
+    def get_readonly_fields(self, request, obj=None):
+        readonly_fields = list(super().get_readonly_fields(request, obj))
+        if not request.user.is_superuser and obj is not None and "organization" not in readonly_fields:
+            readonly_fields.append("organization")
+        return readonly_fields
+
+    def save_model(self, request, obj, form, change):
+        organization = get_user_organization(request.user)
+        if organization and not request.user.is_superuser:
+            obj.organization = organization
+        super().save_model(request, obj, form, change)
+
 
 try:
     admin.site.unregister(User)

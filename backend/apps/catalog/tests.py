@@ -5,7 +5,7 @@ from django.test import RequestFactory, TestCase
 from django.urls import reverse
 from rest_framework.test import APIClient
 
-from apps.catalog.admin import ProductAdmin
+from apps.catalog.admin import CategoryAdmin, ProductAdmin
 from apps.catalog.models import Category, Product, Unit
 from apps.tenants.models import Organization, Store, UserProfile, UserStoreAccess
 
@@ -37,38 +37,70 @@ class CatalogModelTests(TestCase):
 
 
 class CatalogAdminScopeTests(TestCase):
-    def test_manager_only_sees_products_from_own_organization(self):
-        first_org = Organization.objects.create(name="Primeira")
-        second_org = Organization.objects.create(name="Segunda")
-        first_category = Category.objects.create(organization=first_org, name="Bebidas")
-        second_category = Category.objects.create(organization=second_org, name="Lanches")
-        first_unit = Unit.objects.create(organization=first_org, name="Unidade", symbol="UN")
-        second_unit = Unit.objects.create(organization=second_org, name="Caixa", symbol="CX")
-        first_product = Product.objects.create(
-            organization=first_org,
-            category=first_category,
-            unit=first_unit,
+    def setUp(self):
+        self.first_org = Organization.objects.create(name="Primeira")
+        self.second_org = Organization.objects.create(name="Segunda")
+        self.first_category = Category.objects.create(organization=self.first_org, name="Bebidas")
+        self.second_category = Category.objects.create(organization=self.second_org, name="Lanches")
+        self.first_unit = Unit.objects.create(organization=self.first_org, name="Unidade", symbol="UN")
+        self.second_unit = Unit.objects.create(organization=self.second_org, name="Caixa", symbol="CX")
+        self.first_product = Product.objects.create(
+            organization=self.first_org,
+            category=self.first_category,
+            unit=self.first_unit,
             name="Agua",
             sku="AGUA-001",
             price="3.50",
         )
         Product.objects.create(
-            organization=second_org,
-            category=second_category,
-            unit=second_unit,
+            organization=self.second_org,
+            category=self.second_category,
+            unit=self.second_unit,
             name="Sanduiche",
             sku="SAND-001",
             price="12.00",
         )
-        manager = get_user_model().objects.create_user(username="manager", password="test-pass", is_staff=True)
-        UserProfile.objects.create(user=manager, organization=first_org, role=UserProfile.Role.MANAGER)
+        self.manager = get_user_model().objects.create_user(username="manager", password="test-pass", is_staff=True)
+        UserProfile.objects.create(user=self.manager, organization=self.first_org, role=UserProfile.Role.MANAGER)
+
+    def request_for(self, user):
         request = RequestFactory().get("/admin/")
-        request.user = manager
+        request.user = user
+        return request
+
+    def test_manager_only_sees_products_from_own_organization(self):
         model_admin = ProductAdmin(Product, admin.site)
 
-        queryset = model_admin.get_queryset(request)
+        queryset = model_admin.get_queryset(self.request_for(self.manager))
 
-        self.assertEqual(list(queryset), [first_product])
+        self.assertEqual(list(queryset), [self.first_product])
+
+    def test_manager_product_form_limits_tenant_relations(self):
+        model_admin = ProductAdmin(Product, admin.site)
+        request = self.request_for(self.manager)
+
+        organization_field = model_admin.formfield_for_foreignkey(Product._meta.get_field("organization"), request)
+        category_field = model_admin.formfield_for_foreignkey(Product._meta.get_field("category"), request)
+        unit_field = model_admin.formfield_for_foreignkey(Product._meta.get_field("unit"), request)
+
+        self.assertEqual(list(organization_field.queryset), [self.first_org])
+        self.assertEqual(list(category_field.queryset), [self.first_category])
+        self.assertEqual(list(unit_field.queryset), [self.first_unit])
+
+    def test_manager_cannot_change_product_organization_on_existing_record(self):
+        model_admin = ProductAdmin(Product, admin.site)
+
+        readonly_fields = model_admin.get_readonly_fields(self.request_for(self.manager), self.first_product)
+
+        self.assertIn("organization", readonly_fields)
+
+    def test_manager_save_forces_category_organization(self):
+        model_admin = CategoryAdmin(Category, admin.site)
+        category = Category(organization=self.second_org, name="Pizzas")
+
+        model_admin.save_model(self.request_for(self.manager), category, form=None, change=False)
+
+        self.assertEqual(category.organization, self.first_org)
 
 
 class CatalogApiTests(TestCase):
