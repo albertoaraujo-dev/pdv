@@ -1,4 +1,9 @@
 from django.apps import AppConfig
+from django.contrib.auth.apps import AuthConfig
+
+
+class DjangoAuthConfig(AuthConfig):
+    verbose_name = "Autenticação e acessos"
 
 
 class AccountsConfig(AppConfig):

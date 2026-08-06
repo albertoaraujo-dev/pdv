@@ -24,7 +24,7 @@ ALLOWED_HOSTS = [host.strip() for host in os.getenv("DJANGO_ALLOWED_HOSTS", "loc
 INSTALLED_APPS = [
     "unfold",
     "django.contrib.admin",
-    "django.contrib.auth",
+    "apps.accounts.apps.DjangoAuthConfig",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
@@ -228,7 +228,7 @@ UNFOLD = {
                         "permission": lambda request: request.user.is_superuser,
                     },
                     {
-                        "title": _("Eventos de auth"),
+                        "title": _("Eventos de autenticação"),
                         "icon": "shield_lock",
                         "link": reverse_lazy("admin:accounts_authevent_changelist"),
                         "permission": lambda request: request.user.is_superuser,
