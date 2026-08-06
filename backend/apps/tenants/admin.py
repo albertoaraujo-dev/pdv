@@ -282,6 +282,8 @@ class UserProfileAdmin(TenantScopedAdminMixin, ModelAdmin):
     def has_change_permission(self, request, obj=None):
         if request.user.is_superuser:
             return True
+        if is_manager(request.user):
+            return False
         if obj is None:
             return True
         return get_manageable_profiles(request.user).filter(pk=obj.pk).exists()

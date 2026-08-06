@@ -129,6 +129,13 @@ class TenantAdminScopeTests(TestCase):
 
         self.assertFalse(allowed)
 
+    def test_manager_cannot_change_profiles_directly(self):
+        model_admin = UserProfileAdmin(UserProfile, admin.site)
+
+        allowed = model_admin.has_change_permission(self.request_for(self.manager), self.operator_profile)
+
+        self.assertFalse(allowed)
+
     def test_manager_does_not_see_admin_user_in_auth_admin(self):
         model_admin = UserAdmin(get_user_model(), admin.site)
 
