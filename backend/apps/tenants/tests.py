@@ -209,13 +209,17 @@ class TenantAdminScopeTests(TestCase):
         self.assertTrue(user.profile.must_change_password)
         self.assertTrue(UserStoreAccess.objects.filter(profile=user.profile, store=self.first_store).exists())
 
-    def test_manager_only_sees_store_accesses_from_subordinates(self):
+    def test_manager_cannot_access_store_access_admin_directly(self):
         UserStoreAccess.objects.create(profile=self.admin_profile, store=self.first_store)
         model_admin = UserStoreAccessAdmin(UserStoreAccess, admin.site)
+        request = self.request_for(self.manager)
 
-        queryset = model_admin.get_queryset(self.request_for(self.manager))
+        queryset = model_admin.get_queryset(request)
 
-        self.assertEqual(list(queryset), [self.operator_access])
+        self.assertFalse(model_admin.has_module_permission(request))
+        self.assertFalse(model_admin.has_view_permission(request, self.operator_access))
+        self.assertFalse(model_admin.has_change_permission(request, self.operator_access))
+        self.assertEqual(list(queryset), [])
 
     def test_manager_profile_field_lists_subordinates_for_store_access(self):
         model_admin = UserStoreAccessAdmin(UserStoreAccess, admin.site)

@@ -305,11 +305,27 @@ class UserStoreAccessAdmin(TenantScopedAdminMixin, ModelAdmin):
         queryset = super().get_queryset(request)
         if request.user.is_superuser:
             return queryset
+        if is_manager(request.user):
+            return queryset.none()
         return queryset.filter(profile__in=get_manageable_profiles(request.user))
+
+    def has_module_permission(self, request):
+        return request.user.is_superuser or not is_manager(request.user)
+
+    def has_view_permission(self, request, obj=None):
+        if request.user.is_superuser:
+            return True
+        if is_manager(request.user):
+            return False
+        if obj is None:
+            return True
+        return get_manageable_profiles(request.user).filter(pk=obj.profile_id).exists()
 
     def has_change_permission(self, request, obj=None):
         if request.user.is_superuser:
             return True
+        if is_manager(request.user):
+            return False
         if obj is None:
             return True
         return get_manageable_profiles(request.user).filter(pk=obj.profile_id).exists()
