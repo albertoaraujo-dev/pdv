@@ -7,6 +7,10 @@ const password = ref('')
 const errorMessage = ref(route.query.reason === 'inactive' ? 'Usuário inativo.' : '')
 const isSubmitting = ref(false)
 
+if (typeof route.query.next === 'string' && route.query.next.startsWith('/admin')) {
+  await navigateTo(`${config.public.apiBase}/admin/`, { external: true })
+}
+
 type AuthUser = {
   permissions: {
     can_access_admin: boolean
