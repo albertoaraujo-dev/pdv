@@ -160,6 +160,30 @@ class SessionAuthTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["code"], "csrf_failed")
+        self.assertIn("Token CSRF inválido", response.json()["detail"])
+
+    def test_admin_csrf_failure_uses_localized_page(self):
+        response = self.client.post(reverse("admin:login"), data={"username": "manager", "password": "test-pass"})
+
+        self.assertEqual(response.status_code, 403)
+        self.assertContains(response, "Sessão expirada", status_code=403)
+        self.assertContains(response, "Recarregar página", status_code=403)
+        self.assertNotContains(response, "Voltar ao painel", status_code=403)
+
+    def test_admin_logout_csrf_failure_closes_admin_session(self):
+        self.client.post(
+            reverse("admin:login"),
+            data={"username": "manager", "password": "test-pass", "next": "/admin/"},
+            HTTP_X_CSRFTOKEN=self.csrf_token(),
+        )
+
+        response = self.client.post(reverse("admin:logout"), data={"post": "yes"}, HTTP_X_CSRFTOKEN="invalid-token")
+
+        self.assertEqual(response.status_code, 403)
+        self.assertContains(response, "Sessão encerrada", status_code=403)
+        self.assertContains(response, "Entrar novamente", status_code=403)
+        self.assertEqual(self.client.get(reverse("admin:index")).status_code, 302)
 
     def test_login_requires_json_content_type(self):
         response = self.client.post(
