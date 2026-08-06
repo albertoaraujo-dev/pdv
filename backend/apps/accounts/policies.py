@@ -43,6 +43,11 @@ def is_manager(user):
     return bool(profile and profile.role == UserProfile.Role.MANAGER)
 
 
+def can_manage_organization_settings(user):
+    profile = get_user_profile(user)
+    return bool(profile and profile.role in (UserProfile.Role.ADMIN, UserProfile.Role.MANAGER))
+
+
 def can_access_admin(user):
     if not user or not user.is_active:
         return False

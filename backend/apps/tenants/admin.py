@@ -16,6 +16,7 @@ from apps.accounts.policies import (
     get_user_organization,
     get_visible_stores,
     is_inactive_for_login,
+    can_manage_organization_settings,
     is_manager,
 )
 
@@ -98,6 +99,7 @@ except admin.sites.NotRegistered:
 @admin.register(User)
 class UserAdmin(DjangoUserAdmin, ModelAdmin):
     add_form = ManagedUserCreationForm
+    list_per_page = 25
 
     def get_queryset(self, request):
         queryset = super().get_queryset(request)
@@ -187,17 +189,42 @@ class UserAdmin(DjangoUserAdmin, ModelAdmin):
 @admin.register(Organization)
 class OrganizationAdmin(ModelAdmin):
     list_display = ["name", "document", "is_active", "created_at"]
+    list_display_links = ["name"]
     list_filter = ["is_active"]
+    list_per_page = 25
     search_fields = ["name", "legal_name", "document"]
 
     def get_queryset(self, request):
         queryset = super().get_queryset(request)
         if request.user.is_superuser:
             return queryset
+        if not can_manage_organization_settings(request.user):
+            return queryset.none()
         organization = get_user_organization(request.user)
         if not organization:
             return queryset.none()
         return queryset.filter(pk=organization.pk)
+
+    def get_readonly_fields(self, request, obj=None):
+        if request.user.is_superuser:
+            return super().get_readonly_fields(request, obj)
+        return ("is_active", "created_at", "updated_at")
+
+    def has_module_permission(self, request):
+        return request.user.is_superuser or can_manage_organization_settings(request.user)
+
+    def has_view_permission(self, request, obj=None):
+        if request.user.is_superuser:
+            return True
+        if not can_manage_organization_settings(request.user):
+            return False
+        if obj is None:
+            return True
+        organization = get_user_organization(request.user)
+        return bool(organization and obj.pk == organization.pk)
+
+    def has_change_permission(self, request, obj=None):
+        return self.has_view_permission(request, obj)
 
     def has_add_permission(self, request):
         return request.user.is_superuser
@@ -209,7 +236,9 @@ class OrganizationAdmin(ModelAdmin):
 @admin.register(Store)
 class StoreAdmin(TenantScopedAdminMixin, ModelAdmin):
     list_display = ["name", "code", "organization", "is_active"]
+    list_display_links = ["name", "code"]
     list_filter = ["organization", "is_active"]
+    list_per_page = 25
     search_fields = ["name", "code", "organization__name"]
 
     def get_queryset(self, request):
@@ -227,7 +256,9 @@ class StoreAdmin(TenantScopedAdminMixin, ModelAdmin):
 @admin.register(UserProfile)
 class UserProfileAdmin(TenantScopedAdminMixin, ModelAdmin):
     list_display = ["user", "organization", "role", "must_change_password", "is_active"]
+    list_display_links = ["user"]
     list_filter = ["organization", "role", "is_active"]
+    list_per_page = 25
     tenant_list_filter = ["role", "is_active"]
     search_fields = ["user__username", "user__email", "organization__name"]
 
@@ -262,7 +293,9 @@ class UserProfileAdmin(TenantScopedAdminMixin, ModelAdmin):
 @admin.register(UserStoreAccess)
 class UserStoreAccessAdmin(TenantScopedAdminMixin, ModelAdmin):
     list_display = ["profile", "store", "is_active"]
+    list_display_links = ["profile", "store"]
     list_filter = ["store__organization", "store", "is_active"]
+    list_per_page = 25
     tenant_field = "profile__organization"
     search_fields = ["profile__user__username", "store__name"]
 

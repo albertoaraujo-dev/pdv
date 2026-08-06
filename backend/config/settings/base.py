@@ -17,6 +17,17 @@ def env_int(name, default=0):
     except (TypeError, ValueError):
         return default
 
+
+def can_view_organizations_menu(request):
+    user = getattr(request, "user", None)
+    if not user or not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    profile = getattr(user, "profile", None)
+    return bool(profile and profile.role in {"admin", "manager"})
+
+
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-only-secret-key")
 DEBUG = env_bool("DJANGO_DEBUG", False)
 ALLOWED_HOSTS = [host.strip() for host in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if host.strip()]
@@ -170,6 +181,7 @@ UNFOLD = {
                         "title": _("Organizações"),
                         "icon": "corporate_fare",
                         "link": reverse_lazy("admin:tenants_organization_changelist"),
+                        "permission": can_view_organizations_menu,
                     },
                     {
                         "title": _("Lojas"),

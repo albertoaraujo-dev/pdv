@@ -9,21 +9,27 @@ from .models import Category, Product, Unit
 @admin.register(Category)
 class CategoryAdmin(TenantScopedAdminMixin, ModelAdmin):
     list_display = ["name", "organization", "is_active"]
+    list_display_links = ["name"]
     list_filter = ["organization", "is_active"]
+    list_per_page = 25
     search_fields = ["name", "organization__name"]
 
 
 @admin.register(Unit)
 class UnitAdmin(TenantScopedAdminMixin, ModelAdmin):
     list_display = ["symbol", "name", "organization", "is_active"]
+    list_display_links = ["symbol", "name"]
     list_filter = ["organization", "is_active"]
+    list_per_page = 25
     search_fields = ["symbol", "name", "organization__name"]
 
 
 @admin.register(Product)
 class ProductAdmin(TenantScopedAdminMixin, ModelAdmin):
     list_display = ["name", "sku", "organization", "category", "unit", "price", "is_active"]
+    list_display_links = ["name", "sku"]
     list_filter = ["organization", "category", "unit", "is_active"]
+    list_per_page = 25
     search_fields = ["name", "sku", "barcode", "organization__name"]
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):

@@ -59,12 +59,35 @@ class TenantAdminScopeTests(TestCase):
         request.user = user
         return request
 
-    def test_non_superuser_only_sees_own_organization_in_admin(self):
+    def test_manager_only_sees_own_organization_in_admin(self):
         model_admin = OrganizationAdmin(Organization, admin.site)
 
         queryset = model_admin.get_queryset(self.request_for(self.manager))
 
         self.assertEqual(list(queryset), [self.first_org])
+
+    def test_manager_can_view_and_change_own_organization_in_admin(self):
+        model_admin = OrganizationAdmin(Organization, admin.site)
+        request = self.request_for(self.manager)
+
+        self.assertTrue(model_admin.has_module_permission(request))
+        self.assertTrue(model_admin.has_view_permission(request, self.first_org))
+        self.assertTrue(model_admin.has_change_permission(request, self.first_org))
+
+    def test_manager_cannot_view_other_organization_in_admin(self):
+        model_admin = OrganizationAdmin(Organization, admin.site)
+        request = self.request_for(self.manager)
+
+        self.assertFalse(model_admin.has_view_permission(request, self.second_org))
+        self.assertFalse(model_admin.has_change_permission(request, self.second_org))
+
+    def test_manager_cannot_add_delete_or_change_status_on_organization(self):
+        model_admin = OrganizationAdmin(Organization, admin.site)
+        request = self.request_for(self.manager)
+
+        self.assertFalse(model_admin.has_add_permission(request))
+        self.assertFalse(model_admin.has_delete_permission(request, self.first_org))
+        self.assertEqual(model_admin.get_readonly_fields(request, self.first_org), ("is_active", "created_at", "updated_at"))
 
     def test_manager_only_sees_allowed_stores_in_admin(self):
         model_admin = StoreAdmin(Store, admin.site)
