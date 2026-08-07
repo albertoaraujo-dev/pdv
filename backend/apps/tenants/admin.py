@@ -95,6 +95,13 @@ class TenantScopedAdminMixin:
             readonly_fields.append("organization")
         return readonly_fields
 
+    def get_exclude(self, request, obj=None):
+        exclude = list(super().get_exclude(request, obj) or [])
+        has_organization_field = any(field.name == "organization" for field in self.model._meta.fields)
+        if has_organization_field and not request.user.is_superuser and obj is None and "organization" not in exclude:
+            exclude.append("organization")
+        return exclude
+
     def save_model(self, request, obj, form, change):
         organization = get_user_organization(request.user)
         if organization and not request.user.is_superuser:

@@ -79,13 +79,22 @@ class CatalogAdminScopeTests(TestCase):
         model_admin = ProductAdmin(Product, admin.site)
         request = self.request_for(self.manager)
 
-        organization_field = model_admin.formfield_for_foreignkey(Product._meta.get_field("organization"), request)
         category_field = model_admin.formfield_for_foreignkey(Product._meta.get_field("category"), request)
         unit_field = model_admin.formfield_for_foreignkey(Product._meta.get_field("unit"), request)
 
-        self.assertEqual(list(organization_field.queryset), [self.first_org])
         self.assertEqual(list(category_field.queryset), [self.first_category])
         self.assertEqual(list(unit_field.queryset), [self.first_unit])
+
+    def test_manager_create_forms_hide_organization_field(self):
+        category_admin = CategoryAdmin(Category, admin.site)
+        product_admin = ProductAdmin(Product, admin.site)
+        request = self.request_for(self.manager)
+
+        category_form = category_admin.get_form(request, obj=None)
+        product_form = product_admin.get_form(request, obj=None)
+
+        self.assertNotIn("organization", category_form.base_fields)
+        self.assertNotIn("organization", product_form.base_fields)
 
     def test_manager_cannot_change_product_organization_on_existing_record(self):
         model_admin = ProductAdmin(Product, admin.site)
