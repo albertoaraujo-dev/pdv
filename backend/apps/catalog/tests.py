@@ -150,6 +150,13 @@ class CatalogAdminScopeTests(TestCase):
         self.assertEqual(category_admin.list_editable, ["is_active"])
         self.assertEqual(product_admin.list_editable, ["is_active"])
 
+    def test_catalog_admin_forms_show_exit_button(self):
+        category_admin = CategoryAdmin(Category, admin.site)
+        product_admin = ProductAdmin(Product, admin.site)
+
+        self.assertTrue(category_admin.change_form_show_cancel_button)
+        self.assertTrue(product_admin.change_form_show_cancel_button)
+
     def test_manager_product_list_filters_are_scoped_to_tenant(self):
         model_admin = ProductAdmin(Product, admin.site)
         request = self.request_for(self.manager)

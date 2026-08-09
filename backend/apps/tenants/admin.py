@@ -60,6 +60,7 @@ class ManagedUserCreationForm(UserCreationForm):
 
 
 class TenantScopedAdminMixin:
+    change_form_show_cancel_button = True
     tenant_field = "organization"
     tenant_list_filter = ["is_active"]
 
@@ -118,6 +119,7 @@ except admin.sites.NotRegistered:
 @admin.register(User)
 class UserAdmin(DjangoUserAdmin, ModelAdmin):
     add_form = ManagedUserCreationForm
+    change_form_show_cancel_button = True
     list_per_page = 25
 
     def get_queryset(self, request):
@@ -207,6 +209,7 @@ class UserAdmin(DjangoUserAdmin, ModelAdmin):
 
 @admin.register(Organization)
 class OrganizationAdmin(ModelAdmin):
+    change_form_show_cancel_button = True
     list_display = ["name", "document", "is_active", "created_at"]
     list_display_links = ["name"]
     list_filter = ["is_active"]
