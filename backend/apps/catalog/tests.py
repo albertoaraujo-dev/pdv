@@ -27,6 +27,21 @@ class CatalogModelTests(TestCase):
                 price="3.50",
             )
 
+    def test_product_rejects_negative_price(self):
+        organization = Organization.objects.create(name="Primeira")
+        category = Category.objects.create(organization=organization, name="Bebidas")
+        unit = Unit.objects.create(organization=organization, name="Unidade", symbol="UN")
+
+        with self.assertRaisesMessage(ValidationError, "O preço não pode ser negativo."):
+            Product.objects.create(
+                organization=organization,
+                category=category,
+                unit=unit,
+                name="Produto inválido",
+                sku="NEG-001",
+                price="-1.00",
+            )
+
     def test_catalog_queryset_filters_by_organization(self):
         first_org = Organization.objects.create(name="Primeira")
         second_org = Organization.objects.create(name="Segunda")
@@ -125,6 +140,26 @@ class CatalogAdminScopeTests(TestCase):
         self.assertTrue(model_admin.list_filter_submit)
         self.assertEqual(list(category_filter.lookups(request, model_admin)), [(self.first_category.pk, self.first_category.name)])
         self.assertEqual(list(unit_filter.lookups(request, model_admin)), [(self.first_unit.pk, self.first_unit.symbol)])
+
+    def test_manager_product_create_form_validates_with_user_organization(self):
+        model_admin = ProductAdmin(Product, admin.site)
+        request = self.request_for(self.manager)
+        form_class = model_admin.get_form(request, obj=None)
+
+        form = form_class(
+            data={
+                "name": "Suco",
+                "sku": "SUCO-001",
+                "barcode": "",
+                "category": self.first_category.pk,
+                "unit": self.first_unit.pk,
+                "price": "5.00",
+                "is_active": "on",
+            }
+        )
+
+        self.assertTrue(form.is_valid(), form.errors.as_data())
+        self.assertEqual(form.instance.organization, self.first_org)
 
     def test_manager_cannot_change_product_organization_on_existing_record(self):
         model_admin = ProductAdmin(Product, admin.site)

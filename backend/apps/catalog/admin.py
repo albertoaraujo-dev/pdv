@@ -106,6 +106,19 @@ class ProductAdmin(TenantScopedAdminMixin, ModelAdmin):
             fieldsets.append(("Controle", {"fields": ["created_at", "updated_at"]}))
         return fieldsets
 
+    def get_form(self, request, obj=None, change=False, **kwargs):
+        form_class = super().get_form(request, obj, change, **kwargs)
+        organization = get_user_organization(request.user)
+        if request.user.is_superuser or obj is not None or not organization:
+            return form_class
+
+        class TenantProductForm(form_class):
+            def _post_clean(self):
+                self.instance.organization = organization
+                super()._post_clean()
+
+        return TenantProductForm
+
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         organization = get_user_organization(request.user)
         if organization and db_field.name == "category":

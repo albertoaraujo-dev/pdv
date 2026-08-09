@@ -89,6 +89,8 @@ class Product(models.Model):
 
     def clean(self):
         errors = {}
+        if self.price is not None and self.price < 0:
+            errors["price"] = "O preço não pode ser negativo."
         if self.category_id and self.category.organization_id != self.organization_id:
             errors["category"] = "A categoria precisa pertencer à mesma organização do produto."
         if self.unit_id and self.unit.organization_id != self.organization_id:
