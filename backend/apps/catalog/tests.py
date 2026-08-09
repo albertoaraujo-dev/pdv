@@ -1,5 +1,6 @@
 from django.core.exceptions import ValidationError
 from django.contrib import admin
+from django import forms
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
@@ -219,6 +220,15 @@ class CatalogAdminScopeTests(TestCase):
 
         self.assertTrue(form.is_valid(), form.errors.as_data())
         self.assertEqual(form.instance.organization, self.first_org)
+
+    def test_product_admin_price_field_preserves_money_format(self):
+        model_admin = ProductAdmin(Product, admin.site)
+        form_class = model_admin.get_form(self.request_for(self.manager), obj=None)
+        form = form_class()
+
+        self.assertIsInstance(form.fields["price"].widget, forms.TextInput)
+        self.assertEqual(form.fields["price"].widget.attrs["inputmode"], "decimal")
+        self.assertEqual(form.fields["price"].widget.attrs["placeholder"], "0,00")
 
     def test_manager_cannot_change_product_organization_on_existing_record(self):
         model_admin = ProductAdmin(Product, admin.site)

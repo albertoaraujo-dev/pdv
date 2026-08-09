@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django import forms
 from unfold.admin import ModelAdmin
 from unfold.contrib.filters.admin import BooleanRadioFilter, DropdownFilter
 
@@ -117,12 +118,22 @@ class ProductAdmin(SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelA
     def get_form(self, request, obj=None, change=False, **kwargs):
         form_class = super().get_form(request, obj, change, **kwargs)
         organization = get_user_organization(request.user)
-        if request.user.is_superuser or obj is not None or not organization:
-            return form_class
+        should_set_organization = not request.user.is_superuser and obj is None and organization
 
         class TenantProductForm(form_class):
+            def __init__(self, *args, **form_kwargs):
+                super().__init__(*args, **form_kwargs)
+                if "price" in self.fields:
+                    self.fields["price"].widget = forms.TextInput(
+                        attrs={
+                            "inputmode": "decimal",
+                            "placeholder": "0,00",
+                        }
+                    )
+
             def _post_clean(self):
-                self.instance.organization = organization
+                if should_set_organization:
+                    self.instance.organization = organization
                 super()._post_clean()
 
         return TenantProductForm
