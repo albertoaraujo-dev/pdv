@@ -96,12 +96,32 @@ class CatalogAdminScopeTests(TestCase):
         self.assertNotIn("organization", category_form.base_fields)
         self.assertNotIn("organization", product_form.base_fields)
 
+    def test_manager_catalog_fieldsets_omit_organization_on_create(self):
+        category_admin = CategoryAdmin(Category, admin.site)
+        product_admin = ProductAdmin(Product, admin.site)
+        request = self.request_for(self.manager)
+
+        category_fields = category_admin.get_fieldsets(request, obj=None)[0][1]["fields"]
+        product_identity_fields = product_admin.get_fieldsets(request, obj=None)[0][1]["fields"]
+
+        self.assertNotIn("organization", category_fields)
+        self.assertNotIn("organization", product_identity_fields)
+
+    def test_catalog_admin_exposes_quick_status_toggle(self):
+        category_admin = CategoryAdmin(Category, admin.site)
+        product_admin = ProductAdmin(Product, admin.site)
+
+        self.assertEqual(category_admin.list_editable, ["is_active"])
+        self.assertEqual(product_admin.list_editable, ["is_active"])
+
     def test_manager_cannot_change_product_organization_on_existing_record(self):
         model_admin = ProductAdmin(Product, admin.site)
 
         readonly_fields = model_admin.get_readonly_fields(self.request_for(self.manager), self.first_product)
 
         self.assertIn("organization", readonly_fields)
+        self.assertIn("created_at", readonly_fields)
+        self.assertIn("updated_at", readonly_fields)
 
     def test_manager_save_forces_category_organization(self):
         model_admin = CategoryAdmin(Category, admin.site)
