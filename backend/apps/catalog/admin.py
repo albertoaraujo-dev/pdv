@@ -41,8 +41,16 @@ class TenantUnitFilter(DropdownFilter):
         return queryset
 
 
+class SimpleCatalogSaveActionsMixin:
+    def render_change_form(self, request, context, add=False, change=False, form_url="", obj=None):
+        if not request.user.is_superuser:
+            context["show_save_and_continue"] = False
+            context["show_save_and_add_another"] = False
+        return super().render_change_form(request, context, add, change, form_url, obj)
+
+
 @admin.register(Category)
-class CategoryAdmin(TenantScopedAdminMixin, ModelAdmin):
+class CategoryAdmin(SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelAdmin):
     list_display = ["name", "organization", "is_active"]
     list_display_links = ["name"]
     list_editable = ["is_active"]
@@ -62,7 +70,7 @@ class CategoryAdmin(TenantScopedAdminMixin, ModelAdmin):
 
 
 @admin.register(Unit)
-class UnitAdmin(TenantScopedAdminMixin, ModelAdmin):
+class UnitAdmin(SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelAdmin):
     list_display = ["symbol", "name", "organization", "is_active"]
     list_display_links = ["symbol", "name"]
     list_editable = ["is_active"]
@@ -82,7 +90,7 @@ class UnitAdmin(TenantScopedAdminMixin, ModelAdmin):
 
 
 @admin.register(Product)
-class ProductAdmin(TenantScopedAdminMixin, ModelAdmin):
+class ProductAdmin(SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelAdmin):
     list_display = ["name", "sku", "organization", "category", "unit", "price", "is_active"]
     list_display_links = ["name", "sku"]
     list_editable = ["is_active"]

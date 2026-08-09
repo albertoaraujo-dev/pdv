@@ -5,7 +5,7 @@ from django.test import RequestFactory, TestCase
 from django.urls import reverse
 from rest_framework.test import APIClient
 
-from apps.catalog.admin import BooleanRadioFilter, CategoryAdmin, ProductAdmin, TenantCategoryFilter, TenantUnitFilter
+from apps.catalog.admin import BooleanRadioFilter, CategoryAdmin, ProductAdmin, SimpleCatalogSaveActionsMixin, TenantCategoryFilter, TenantUnitFilter
 from apps.catalog.models import Category, Product, Unit
 from apps.tenants.models import Organization, Store, UserProfile, UserStoreAccess
 
@@ -156,6 +156,37 @@ class CatalogAdminScopeTests(TestCase):
 
         self.assertTrue(category_admin.change_form_show_cancel_button)
         self.assertTrue(product_admin.change_form_show_cancel_button)
+
+    def test_manager_catalog_forms_hide_secondary_save_buttons(self):
+        class DummyBase:
+            def render_change_form(self, request, context, add=False, change=False, form_url="", obj=None):
+                return context
+
+        class DummyAdmin(SimpleCatalogSaveActionsMixin, DummyBase):
+            pass
+
+        context = {"show_save_and_continue": True, "show_save_and_add_another": True}
+
+        result = DummyAdmin().render_change_form(self.request_for(self.manager), context)
+
+        self.assertFalse(result["show_save_and_continue"])
+        self.assertFalse(result["show_save_and_add_another"])
+
+    def test_superuser_catalog_forms_keep_secondary_save_buttons(self):
+        class DummyBase:
+            def render_change_form(self, request, context, add=False, change=False, form_url="", obj=None):
+                return context
+
+        class DummyAdmin(SimpleCatalogSaveActionsMixin, DummyBase):
+            pass
+
+        superuser = get_user_model().objects.create_superuser(username="root", password="test-pass")
+        context = {"show_save_and_continue": True, "show_save_and_add_another": True}
+
+        result = DummyAdmin().render_change_form(self.request_for(superuser), context)
+
+        self.assertTrue(result["show_save_and_continue"])
+        self.assertTrue(result["show_save_and_add_another"])
 
     def test_manager_product_list_filters_are_scoped_to_tenant(self):
         model_admin = ProductAdmin(Product, admin.site)
