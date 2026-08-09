@@ -44,6 +44,7 @@ ALLOWED_HOSTS = [host.strip() for host in os.getenv("DJANGO_ALLOWED_HOSTS", "loc
 
 INSTALLED_APPS = [
     "unfold",
+    "unfold.contrib.filters",
     "django.contrib.admin",
     "apps.accounts.apps.DjangoAuthConfig",
     "django.contrib.contenttypes",

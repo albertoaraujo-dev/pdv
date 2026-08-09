@@ -5,7 +5,7 @@ from django.test import RequestFactory, TestCase
 from django.urls import reverse
 from rest_framework.test import APIClient
 
-from apps.catalog.admin import CategoryAdmin, ProductAdmin
+from apps.catalog.admin import BooleanRadioFilter, CategoryAdmin, ProductAdmin, TenantCategoryFilter, TenantUnitFilter
 from apps.catalog.models import Category, Product, Unit
 from apps.tenants.models import Organization, Store, UserProfile, UserStoreAccess
 
@@ -113,6 +113,18 @@ class CatalogAdminScopeTests(TestCase):
 
         self.assertEqual(category_admin.list_editable, ["is_active"])
         self.assertEqual(product_admin.list_editable, ["is_active"])
+
+    def test_manager_product_list_filters_are_scoped_to_tenant(self):
+        model_admin = ProductAdmin(Product, admin.site)
+        request = self.request_for(self.manager)
+
+        category_filter = TenantCategoryFilter(request, {}, Product, model_admin)
+        unit_filter = TenantUnitFilter(request, {}, Product, model_admin)
+
+        self.assertEqual(model_admin.get_list_filter(request), [TenantCategoryFilter, TenantUnitFilter, ("is_active", BooleanRadioFilter)])
+        self.assertTrue(model_admin.list_filter_submit)
+        self.assertEqual(list(category_filter.lookups(request, model_admin)), [(self.first_category.pk, self.first_category.name)])
+        self.assertEqual(list(unit_filter.lookups(request, model_admin)), [(self.first_unit.pk, self.first_unit.symbol)])
 
     def test_manager_cannot_change_product_organization_on_existing_record(self):
         model_admin = ProductAdmin(Product, admin.site)
