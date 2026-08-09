@@ -50,6 +50,27 @@ class CatalogModelTests(TestCase):
 
         self.assertEqual(Category.objects.for_organization(first_org).count(), 1)
 
+    def test_catalog_text_fields_are_trimmed_on_save(self):
+        organization = Organization.objects.create(name="Primeira")
+        category = Category.objects.create(organization=organization, name=" Bebidas ")
+        unit = Unit.objects.create(organization=organization, name=" Unidade ", symbol=" UN ")
+        product = Product.objects.create(
+            organization=organization,
+            category=category,
+            unit=unit,
+            name=" Agua ",
+            sku=" AGUA-001 ",
+            barcode=" 7891000000010 ",
+            price="3.50",
+        )
+
+        self.assertEqual(category.name, "Bebidas")
+        self.assertEqual(unit.name, "Unidade")
+        self.assertEqual(unit.symbol, "UN")
+        self.assertEqual(product.name, "Agua")
+        self.assertEqual(product.sku, "AGUA-001")
+        self.assertEqual(product.barcode, "7891000000010")
+
 
 class CatalogAdminScopeTests(TestCase):
     def setUp(self):

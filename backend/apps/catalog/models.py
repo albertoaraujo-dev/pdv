@@ -4,6 +4,13 @@ from django.db import models
 from apps.tenants.models import ActiveQuerySet, Organization
 
 
+def strip_text_fields(instance, field_names):
+    for field_name in field_names:
+        value = getattr(instance, field_name)
+        if isinstance(value, str):
+            setattr(instance, field_name, value.strip())
+
+
 class Category(models.Model):
     organization = models.ForeignKey(Organization, on_delete=models.PROTECT, related_name="categories", verbose_name="organização")
     name = models.CharField("nome", max_length=120)
@@ -28,6 +35,13 @@ class Category(models.Model):
 
     def __str__(self):
         return self.name
+
+    def clean(self):
+        strip_text_fields(self, ["name"])
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
 
 
 class Unit(models.Model):
@@ -55,6 +69,13 @@ class Unit(models.Model):
 
     def __str__(self):
         return self.symbol
+
+    def clean(self):
+        strip_text_fields(self, ["name", "symbol"])
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
 
 
 class Product(models.Model):
@@ -89,6 +110,7 @@ class Product(models.Model):
 
     def clean(self):
         errors = {}
+        strip_text_fields(self, ["name", "sku", "barcode"])
         if self.price is not None and self.price < 0:
             errors["price"] = "O preço não pode ser negativo."
         if self.category_id and self.category.organization_id != self.organization_id:
