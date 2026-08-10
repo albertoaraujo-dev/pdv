@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django import forms
+from django.utils.formats import number_format
 from unfold.admin import ModelAdmin
 from unfold.contrib.filters.admin import BooleanRadioFilter, DropdownFilter
 
@@ -92,7 +93,7 @@ class UnitAdmin(SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelAdmi
 
 @admin.register(Product)
 class ProductAdmin(SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelAdmin):
-    list_display = ["name", "sku", "organization", "category", "unit", "price", "is_active"]
+    list_display = ["name", "sku", "organization", "category", "unit", "formatted_price", "is_active"]
     list_display_links = ["name", "sku"]
     list_editable = ["is_active"]
     list_filter = ["organization", TenantCategoryFilter, TenantUnitFilter, ("is_active", BooleanRadioFilter)]
@@ -114,6 +115,10 @@ class ProductAdmin(SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelA
         if obj is not None:
             fieldsets.append(("Controle", {"fields": ["created_at", "updated_at"]}))
         return fieldsets
+
+    @admin.display(ordering="price", description="preço")
+    def formatted_price(self, obj):
+        return f"R$ {number_format(obj.price, decimal_pos=2, force_grouping=True)}"
 
     def get_form(self, request, obj=None, change=False, **kwargs):
         form_class = super().get_form(request, obj, change, **kwargs)

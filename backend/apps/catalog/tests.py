@@ -230,6 +230,13 @@ class CatalogAdminScopeTests(TestCase):
         self.assertEqual(form.fields["price"].widget.attrs["inputmode"], "decimal")
         self.assertEqual(form.fields["price"].widget.attrs["placeholder"], "0,00")
 
+    def test_product_admin_list_formats_price_as_money(self):
+        model_admin = ProductAdmin(Product, admin.site)
+
+        self.assertIn("formatted_price", model_admin.list_display)
+        self.assertEqual(model_admin.formatted_price(self.first_product), "R$ 3,50")
+        self.assertEqual(model_admin.formatted_price.admin_order_field, "price")
+
     def test_manager_cannot_change_product_organization_on_existing_record(self):
         model_admin = ProductAdmin(Product, admin.site)
 
