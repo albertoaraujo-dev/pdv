@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django import forms
+from django.db.models import Count, Q
 from django.utils.formats import number_format
 from unfold.admin import ModelAdmin
 from unfold.contrib.filters.admin import BooleanRadioFilter, DropdownFilter
@@ -53,13 +54,20 @@ class SimpleCatalogSaveActionsMixin:
 
 @admin.register(Category)
 class CategoryAdmin(SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelAdmin):
-    list_display = ["name", "organization", "is_active"]
+    list_display = ["name", "organization", "active_products_count", "is_active"]
     list_display_links = ["name"]
     list_editable = ["is_active"]
     list_filter = ["organization", "is_active"]
     list_per_page = 25
     readonly_fields = ["created_at", "updated_at"]
     search_fields = ["name", "organization__name"]
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).annotate(active_products_count=Count("products", filter=Q(products__is_active=True)))
+
+    @admin.display(ordering="active_products_count", description="produtos ativos")
+    def active_products_count(self, obj):
+        return obj.active_products_count
 
     def get_fieldsets(self, request, obj=None):
         main_fields = ["name", "is_active"]
@@ -73,13 +81,20 @@ class CategoryAdmin(SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, Model
 
 @admin.register(Unit)
 class UnitAdmin(SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelAdmin):
-    list_display = ["symbol", "name", "organization", "is_active"]
+    list_display = ["symbol", "name", "organization", "active_products_count", "is_active"]
     list_display_links = ["symbol", "name"]
     list_editable = ["is_active"]
     list_filter = ["organization", "is_active"]
     list_per_page = 25
     readonly_fields = ["created_at", "updated_at"]
     search_fields = ["symbol", "name", "organization__name"]
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).annotate(active_products_count=Count("products", filter=Q(products__is_active=True)))
+
+    @admin.display(ordering="active_products_count", description="produtos ativos")
+    def active_products_count(self, obj):
+        return obj.active_products_count
 
     def get_fieldsets(self, request, obj=None):
         main_fields = ["symbol", "name", "is_active"]

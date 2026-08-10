@@ -6,7 +6,7 @@ from django.test import RequestFactory, TestCase
 from django.urls import reverse
 from rest_framework.test import APIClient
 
-from apps.catalog.admin import BooleanRadioFilter, CategoryAdmin, ProductAdmin, SimpleCatalogSaveActionsMixin, TenantCategoryFilter, TenantUnitFilter
+from apps.catalog.admin import BooleanRadioFilter, CategoryAdmin, ProductAdmin, SimpleCatalogSaveActionsMixin, TenantCategoryFilter, TenantUnitFilter, UnitAdmin
 from apps.catalog.models import Category, Product, Unit
 from apps.tenants.models import Organization, Store, UserProfile, UserStoreAccess
 
@@ -236,6 +236,29 @@ class CatalogAdminScopeTests(TestCase):
         self.assertIn("formatted_price", model_admin.list_display)
         self.assertEqual(model_admin.formatted_price(self.first_product), "R$ 3,50")
         self.assertEqual(model_admin.formatted_price.admin_order_field, "price")
+
+    def test_category_and_unit_admin_show_active_product_count(self):
+        Product.objects.create(
+            organization=self.first_org,
+            category=self.first_category,
+            unit=self.first_unit,
+            name="Produto inativo",
+            sku="INATIVO-001",
+            price="1.00",
+            is_active=False,
+        )
+        category_admin = CategoryAdmin(Category, admin.site)
+        unit_admin = UnitAdmin(Unit, admin.site)
+
+        category = category_admin.get_queryset(self.request_for(self.manager)).get(pk=self.first_category.pk)
+        unit = unit_admin.get_queryset(self.request_for(self.manager)).get(pk=self.first_unit.pk)
+
+        self.assertIn("active_products_count", category_admin.list_display)
+        self.assertEqual(category_admin.active_products_count(category), 1)
+        self.assertEqual(category_admin.active_products_count.admin_order_field, "active_products_count")
+        self.assertIn("active_products_count", unit_admin.list_display)
+        self.assertEqual(unit_admin.active_products_count(unit), 1)
+        self.assertEqual(unit_admin.active_products_count.admin_order_field, "active_products_count")
 
     def test_manager_cannot_change_product_organization_on_existing_record(self):
         model_admin = ProductAdmin(Product, admin.site)
