@@ -150,6 +150,16 @@ class ProductAdmin(SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelA
                             "placeholder": "0,00",
                         }
                     )
+                if organization and "category" in self.fields:
+                    category_filter = Q(is_active=True)
+                    if self.instance and self.instance.category_id:
+                        category_filter |= Q(pk=self.instance.category_id)
+                    self.fields["category"].queryset = Category.objects.filter(category_filter, organization=organization)
+                if organization and "unit" in self.fields:
+                    unit_filter = Q(is_active=True)
+                    if self.instance and self.instance.unit_id:
+                        unit_filter |= Q(pk=self.instance.unit_id)
+                    self.fields["unit"].queryset = Unit.objects.filter(unit_filter, organization=organization)
 
             def _post_clean(self):
                 if should_set_organization:
@@ -161,7 +171,7 @@ class ProductAdmin(SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelA
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         organization = get_user_organization(request.user)
         if organization and db_field.name == "category":
-            kwargs["queryset"] = Category.objects.filter(organization=organization)
+            kwargs["queryset"] = Category.objects.filter(organization=organization, is_active=True)
         if organization and db_field.name == "unit":
-            kwargs["queryset"] = Unit.objects.filter(organization=organization)
+            kwargs["queryset"] = Unit.objects.filter(organization=organization, is_active=True)
         return super().formfield_for_foreignkey(db_field, request, **kwargs)

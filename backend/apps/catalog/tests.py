@@ -186,12 +186,33 @@ class CatalogAdminScopeTests(TestCase):
     def test_manager_product_form_limits_tenant_relations(self):
         model_admin = ProductAdmin(Product, admin.site)
         request = self.request_for(self.manager)
+        Category.objects.create(organization=self.first_org, name="Inativa", is_active=False)
+        Unit.objects.create(organization=self.first_org, name="Inativa", symbol="IN", is_active=False)
 
         category_field = model_admin.formfield_for_foreignkey(Product._meta.get_field("category"), request)
         unit_field = model_admin.formfield_for_foreignkey(Product._meta.get_field("unit"), request)
 
         self.assertEqual(list(category_field.queryset), [self.first_category])
         self.assertEqual(list(unit_field.queryset), [self.first_unit])
+
+    def test_manager_product_edit_form_keeps_current_inactive_relations(self):
+        inactive_category = Category.objects.create(organization=self.first_org, name="Inativa", is_active=False)
+        inactive_unit = Unit.objects.create(organization=self.first_org, name="Inativa", symbol="IN", is_active=False)
+        inactive_product = Product.objects.create(
+            organization=self.first_org,
+            category=inactive_category,
+            unit=inactive_unit,
+            name="Produto inativo",
+            sku="PROD-INATIVO",
+            price="1.00",
+            is_active=False,
+        )
+        model_admin = ProductAdmin(Product, admin.site)
+        form_class = model_admin.get_form(self.request_for(self.manager), obj=inactive_product)
+        form = form_class(instance=inactive_product)
+
+        self.assertEqual(list(form.fields["category"].queryset), [self.first_category, inactive_category])
+        self.assertEqual(list(form.fields["unit"].queryset), [inactive_unit, self.first_unit])
 
     def test_manager_create_forms_hide_organization_field(self):
         category_admin = CategoryAdmin(Category, admin.site)
