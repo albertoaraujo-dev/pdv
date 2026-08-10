@@ -127,6 +127,10 @@ class Product(models.Model):
             errors["category"] = "A categoria precisa pertencer à mesma organização do produto."
         if self.unit_id and self.unit.organization_id != self.organization_id:
             errors["unit"] = "A unidade precisa pertencer à mesma organização do produto."
+        if self.is_active and self.category_id and not self.category.is_active:
+            errors["category"] = "Produto ativo precisa usar uma categoria ativa."
+        if self.is_active and self.unit_id and not self.unit.is_active:
+            errors["unit"] = "Produto ativo precisa usar uma unidade ativa."
         if errors:
             raise ValidationError(errors)
 

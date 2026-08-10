@@ -43,6 +43,41 @@ class CatalogModelTests(TestCase):
                 price="-1.00",
             )
 
+    def test_active_product_requires_active_category_and_unit(self):
+        organization = Organization.objects.create(name="Primeira")
+        category = Category.objects.create(organization=organization, name="Bebidas", is_active=False)
+        unit = Unit.objects.create(organization=organization, name="Unidade", symbol="UN", is_active=False)
+
+        with self.assertRaises(ValidationError) as context:
+            Product.objects.create(
+                organization=organization,
+                category=category,
+                unit=unit,
+                name="Agua",
+                sku="AGUA-001",
+                price="3.50",
+            )
+
+        self.assertIn("Produto ativo precisa usar uma categoria ativa.", context.exception.message_dict["category"])
+        self.assertIn("Produto ativo precisa usar uma unidade ativa.", context.exception.message_dict["unit"])
+
+    def test_inactive_product_can_keep_inactive_category_and_unit(self):
+        organization = Organization.objects.create(name="Primeira")
+        category = Category.objects.create(organization=organization, name="Bebidas", is_active=False)
+        unit = Unit.objects.create(organization=organization, name="Unidade", symbol="UN", is_active=False)
+
+        product = Product.objects.create(
+            organization=organization,
+            category=category,
+            unit=unit,
+            name="Agua",
+            sku="AGUA-001",
+            price="3.50",
+            is_active=False,
+        )
+
+        self.assertFalse(product.is_active)
+
     def test_catalog_queryset_filters_by_organization(self):
         first_org = Organization.objects.create(name="Primeira")
         second_org = Organization.objects.create(name="Segunda")
