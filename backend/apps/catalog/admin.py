@@ -52,6 +52,15 @@ class SimpleCatalogSaveActionsMixin:
         return super().render_change_form(request, context, add, change, form_url, obj)
 
 
+def is_product_relation_autocomplete(request, field_name):
+    return (
+        request.path.endswith("/autocomplete/")
+        and request.GET.get("app_label") == "catalog"
+        and request.GET.get("model_name") == "product"
+        and request.GET.get("field_name") == field_name
+    )
+
+
 @admin.register(Category)
 class CategoryAdmin(SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelAdmin):
     list_display = ["name", "organization", "active_products_count", "is_active"]
@@ -63,7 +72,10 @@ class CategoryAdmin(SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, Model
     search_fields = ["name", "organization__name"]
 
     def get_queryset(self, request):
-        return super().get_queryset(request).annotate(active_products_count=Count("products", filter=Q(products__is_active=True)))
+        queryset = super().get_queryset(request)
+        if is_product_relation_autocomplete(request, "category"):
+            queryset = queryset.filter(is_active=True)
+        return queryset.annotate(active_products_count=Count("products", filter=Q(products__is_active=True)))
 
     @admin.display(ordering="active_products_count", description="produtos ativos")
     def active_products_count(self, obj):
@@ -90,7 +102,10 @@ class UnitAdmin(SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelAdmi
     search_fields = ["symbol", "name", "organization__name"]
 
     def get_queryset(self, request):
-        return super().get_queryset(request).annotate(active_products_count=Count("products", filter=Q(products__is_active=True)))
+        queryset = super().get_queryset(request)
+        if is_product_relation_autocomplete(request, "unit"):
+            queryset = queryset.filter(is_active=True)
+        return queryset.annotate(active_products_count=Count("products", filter=Q(products__is_active=True)))
 
     @admin.display(ordering="active_products_count", description="produtos ativos")
     def active_products_count(self, obj):
@@ -108,6 +123,7 @@ class UnitAdmin(SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelAdmi
 
 @admin.register(Product)
 class ProductAdmin(SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelAdmin):
+    autocomplete_fields = ["category", "unit"]
     list_display = ["name", "sku", "organization", "category", "unit", "formatted_price", "is_active"]
     list_display_links = ["name", "sku"]
     list_editable = ["is_active"]

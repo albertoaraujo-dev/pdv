@@ -6,7 +6,7 @@ from django.test import RequestFactory, TestCase
 from django.urls import reverse
 from rest_framework.test import APIClient
 
-from apps.catalog.admin import BooleanRadioFilter, CategoryAdmin, ProductAdmin, SimpleCatalogSaveActionsMixin, TenantCategoryFilter, TenantUnitFilter, UnitAdmin
+from apps.catalog.admin import BooleanRadioFilter, CategoryAdmin, ProductAdmin, SimpleCatalogSaveActionsMixin, TenantCategoryFilter, TenantUnitFilter, UnitAdmin, is_product_relation_autocomplete
 from apps.catalog.models import Category, Product, Unit
 from apps.tenants.models import Organization, Store, UserProfile, UserStoreAccess
 
@@ -176,6 +176,14 @@ class CatalogAdminScopeTests(TestCase):
         request.user = user
         return request
 
+    def autocomplete_request_for(self, user, field_name):
+        request = RequestFactory().get(
+            "/admin/autocomplete/",
+            {"app_label": "catalog", "model_name": "product", "field_name": field_name},
+        )
+        request.user = user
+        return request
+
     def test_manager_only_sees_products_from_own_organization(self):
         model_admin = ProductAdmin(Product, admin.site)
 
@@ -194,6 +202,30 @@ class CatalogAdminScopeTests(TestCase):
 
         self.assertEqual(list(category_field.queryset), [self.first_category])
         self.assertEqual(list(unit_field.queryset), [self.first_unit])
+
+    def test_product_admin_uses_autocomplete_for_catalog_relations(self):
+        model_admin = ProductAdmin(Product, admin.site)
+        category_admin = CategoryAdmin(Category, admin.site)
+        unit_admin = UnitAdmin(Unit, admin.site)
+
+        self.assertEqual(model_admin.autocomplete_fields, ["category", "unit"])
+        self.assertIn("name", category_admin.search_fields)
+        self.assertIn("symbol", unit_admin.search_fields)
+
+    def test_product_relation_autocomplete_only_returns_active_options(self):
+        inactive_category = Category.objects.create(organization=self.first_org, name="Inativa", is_active=False)
+        inactive_unit = Unit.objects.create(organization=self.first_org, name="Inativa", symbol="IN", is_active=False)
+        category_request = self.autocomplete_request_for(self.manager, "category")
+        unit_request = self.autocomplete_request_for(self.manager, "unit")
+
+        categories = CategoryAdmin(Category, admin.site).get_queryset(category_request)
+        units = UnitAdmin(Unit, admin.site).get_queryset(unit_request)
+
+        self.assertTrue(is_product_relation_autocomplete(category_request, "category"))
+        self.assertNotIn(inactive_category, categories)
+        self.assertNotIn(inactive_unit, units)
+        self.assertEqual(list(categories), [self.first_category])
+        self.assertEqual(list(units), [self.first_unit])
 
     def test_manager_product_edit_form_keeps_current_inactive_relations(self):
         inactive_category = Category.objects.create(organization=self.first_org, name="Inativa", is_active=False)
