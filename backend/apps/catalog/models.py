@@ -37,7 +37,12 @@ class Category(models.Model):
         return self.name
 
     def clean(self):
+        errors = {}
         strip_text_fields(self, ["name"])
+        if self.pk and not self.is_active and self.products.filter(is_active=True).exists():
+            errors["is_active"] = "Não é possível inativar categoria com produtos ativos."
+        if errors:
+            raise ValidationError(errors)
 
     def save(self, *args, **kwargs):
         self.full_clean()
@@ -71,7 +76,12 @@ class Unit(models.Model):
         return self.symbol
 
     def clean(self):
+        errors = {}
         strip_text_fields(self, ["name", "symbol"])
+        if self.pk and not self.is_active and self.products.filter(is_active=True).exists():
+            errors["is_active"] = "Não é possível inativar unidade com produtos ativos."
+        if errors:
+            raise ValidationError(errors)
 
     def save(self, *args, **kwargs):
         self.full_clean()

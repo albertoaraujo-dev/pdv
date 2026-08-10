@@ -72,6 +72,42 @@ class CatalogModelTests(TestCase):
         self.assertEqual(product.sku, "AGUA-001")
         self.assertEqual(product.barcode, "7891000000010")
 
+    def test_category_with_active_products_cannot_be_deactivated(self):
+        organization = Organization.objects.create(name="Primeira")
+        category = Category.objects.create(organization=organization, name="Bebidas")
+        unit = Unit.objects.create(organization=organization, name="Unidade", symbol="UN")
+        Product.objects.create(organization=organization, category=category, unit=unit, name="Agua", sku="AGUA-001", price="3.50")
+
+        category.is_active = False
+
+        with self.assertRaisesMessage(ValidationError, "Não é possível inativar categoria com produtos ativos."):
+            category.save()
+
+    def test_unit_with_active_products_cannot_be_deactivated(self):
+        organization = Organization.objects.create(name="Primeira")
+        category = Category.objects.create(organization=organization, name="Bebidas")
+        unit = Unit.objects.create(organization=organization, name="Unidade", symbol="UN")
+        Product.objects.create(organization=organization, category=category, unit=unit, name="Agua", sku="AGUA-001", price="3.50")
+
+        unit.is_active = False
+
+        with self.assertRaisesMessage(ValidationError, "Não é possível inativar unidade com produtos ativos."):
+            unit.save()
+
+    def test_category_and_unit_with_only_inactive_products_can_be_deactivated(self):
+        organization = Organization.objects.create(name="Primeira")
+        category = Category.objects.create(organization=organization, name="Bebidas")
+        unit = Unit.objects.create(organization=organization, name="Unidade", symbol="UN")
+        Product.objects.create(organization=organization, category=category, unit=unit, name="Agua", sku="AGUA-001", price="3.50", is_active=False)
+
+        category.is_active = False
+        unit.is_active = False
+        category.save()
+        unit.save()
+
+        self.assertFalse(category.is_active)
+        self.assertFalse(unit.is_active)
+
 
 class CatalogAdminScopeTests(TestCase):
     def setUp(self):
