@@ -1,5 +1,5 @@
 from django.core.exceptions import ValidationError
-from django.contrib import admin
+from django.contrib import admin, messages as django_messages
 from django import forms
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase
@@ -415,6 +415,79 @@ class CatalogAdminScopeTests(TestCase):
         self.assertIn("formatted_price", model_admin.list_display)
         self.assertEqual(model_admin.formatted_price(self.first_product), "R$ 3,50")
         self.assertEqual(model_admin.formatted_price.admin_order_field, "price")
+
+    def test_product_admin_can_deactivate_selected_products(self):
+        model_admin = ProductAdmin(Product, admin.site)
+        request = self.request_for(self.manager)
+        messages = []
+        model_admin.message_user = lambda _request, message, **kwargs: messages.append((message, kwargs.get("level")))
+
+        model_admin.deactivate_products(request, Product.objects.filter(pk=self.first_product.pk))
+        self.first_product.refresh_from_db()
+
+        self.assertIn("deactivate_products", model_admin.actions)
+        self.assertFalse(self.first_product.is_active)
+        self.assertEqual(messages, [("1 produto(s) inativado(s) com sucesso.", None)])
+
+    def test_product_admin_can_activate_selected_products(self):
+        self.first_product.is_active = False
+        self.first_product.save(update_fields=["is_active"])
+        model_admin = ProductAdmin(Product, admin.site)
+        request = self.request_for(self.manager)
+        messages = []
+        model_admin.message_user = lambda _request, message, **kwargs: messages.append((message, kwargs.get("level")))
+
+        model_admin.activate_products(request, Product.objects.filter(pk=self.first_product.pk))
+        self.first_product.refresh_from_db()
+
+        self.assertIn("activate_products", model_admin.actions)
+        self.assertTrue(self.first_product.is_active)
+        self.assertEqual(messages, [("1 produto(s) ativado(s) com sucesso.", None)])
+
+    def test_product_admin_activate_action_blocks_invalid_inactive_products(self):
+        inactive_category = Category.objects.create(organization=self.first_org, name="Inativa", is_active=False)
+        self.first_product.category = inactive_category
+        self.first_product.is_active = False
+        self.first_product.save()
+        model_admin = ProductAdmin(Product, admin.site)
+        request = self.request_for(self.manager)
+        messages = []
+        model_admin.message_user = lambda _request, message, **kwargs: messages.append((message, kwargs.get("level")))
+
+        model_admin.activate_products(request, Product.objects.filter(pk=self.first_product.pk))
+        self.first_product.refresh_from_db()
+
+        self.assertFalse(self.first_product.is_active)
+        self.assertEqual(messages, [("Nenhum produto pôde ser ativado. Verifique categoria e unidade ativas.", django_messages.ERROR)])
+
+    def test_product_admin_activate_action_errors_when_no_inactive_product_selected(self):
+        model_admin = ProductAdmin(Product, admin.site)
+        request = self.request_for(self.manager)
+        messages = []
+        model_admin.message_user = lambda _request, message, **kwargs: messages.append((message, kwargs.get("level")))
+
+        model_admin.activate_products(request, Product.objects.filter(pk=self.first_product.pk))
+
+        self.assertEqual(messages, [("Nenhum produto inativo foi selecionado para ativar.", django_messages.ERROR)])
+
+    def test_product_admin_deactivate_action_errors_when_no_active_product_selected(self):
+        self.first_product.is_active = False
+        self.first_product.save(update_fields=["is_active"])
+        model_admin = ProductAdmin(Product, admin.site)
+        request = self.request_for(self.manager)
+        messages = []
+        model_admin.message_user = lambda _request, message, **kwargs: messages.append((message, kwargs.get("level")))
+
+        model_admin.deactivate_products(request, Product.objects.filter(pk=self.first_product.pk))
+
+        self.assertEqual(messages, [("Nenhum produto ativo foi selecionado para inativar.", django_messages.ERROR)])
+
+    def test_product_admin_action_placeholder_is_localized(self):
+        model_admin = ProductAdmin(Product, admin.site)
+
+        choices = model_admin.get_action_choices(self.request_for(self.manager))
+
+        self.assertEqual(choices[0], ("", "Selecionar ação"))
 
     def test_category_and_unit_admin_show_active_product_count(self):
         Product.objects.create(

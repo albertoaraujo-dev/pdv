@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.contrib import messages
 from django import forms
 from django.db.models import Count, Q
 from django.utils.formats import number_format
@@ -123,6 +124,7 @@ class UnitAdmin(SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelAdmi
 
 @admin.register(Product)
 class ProductAdmin(SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelAdmin):
+    actions = ["activate_products", "deactivate_products"]
     autocomplete_fields = ["category", "unit"]
     list_display = ["name", "sku", "organization", "category", "unit", "formatted_price", "is_active"]
     list_display_links = ["name", "sku"]
@@ -150,6 +152,47 @@ class ProductAdmin(SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelA
     @admin.display(ordering="price", description="preço")
     def formatted_price(self, obj):
         return f"R$ {number_format(obj.price, decimal_pos=2, force_grouping=True)}"
+
+    @admin.action(description="Inativar produtos selecionados")
+    def deactivate_products(self, request, queryset):
+        active_queryset = queryset.filter(is_active=True)
+        inactive_count = queryset.filter(is_active=False).count()
+        updated = active_queryset.update(is_active=False)
+        if updated == 0:
+            self.message_user(request, "Nenhum produto ativo foi selecionado para inativar.", level=messages.ERROR)
+            return
+        if inactive_count:
+            self.message_user(request, f"{updated} produto(s) inativado(s). {inactive_count} já estava(m) inativo(s).", level=messages.WARNING)
+            return
+        self.message_user(request, f"{updated} produto(s) inativado(s) com sucesso.")
+
+    @admin.action(description="Ativar produtos selecionados")
+    def activate_products(self, request, queryset):
+        inactive_queryset = queryset.filter(is_active=False)
+        already_active_count = queryset.filter(is_active=True).count()
+        invalid_count = inactive_queryset.filter(Q(category__is_active=False) | Q(unit__is_active=False)).count()
+        updated = inactive_queryset.filter(category__is_active=True, unit__is_active=True).update(is_active=True)
+        if updated == 0:
+            if invalid_count:
+                self.message_user(request, "Nenhum produto pôde ser ativado. Verifique categoria e unidade ativas.", level=messages.ERROR)
+                return
+            self.message_user(request, "Nenhum produto inativo foi selecionado para ativar.", level=messages.ERROR)
+            return
+        if invalid_count or already_active_count:
+            details = []
+            if invalid_count:
+                details.append(f"{invalid_count} não pôde/puderam ser ativado(s) por categoria ou unidade inativa")
+            if already_active_count:
+                details.append(f"{already_active_count} já estava(m) ativo(s)")
+            self.message_user(request, f"{updated} produto(s) ativado(s). {'; '.join(details)}.", level=messages.WARNING)
+            return
+        self.message_user(request, f"{updated} produto(s) ativado(s) com sucesso.")
+
+    def get_action_choices(self, request, default_choices=None):
+        choices = super().get_action_choices(request, default_choices)
+        if choices:
+            choices[0] = ("", "Selecionar ação")
+        return choices
 
     def get_form(self, request, obj=None, change=False, **kwargs):
         form_class = super().get_form(request, obj, change, **kwargs)
