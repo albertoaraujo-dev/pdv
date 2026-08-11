@@ -58,8 +58,8 @@ class CatalogModelTests(TestCase):
                 price="3.50",
             )
 
-        self.assertIn("Produto ativo precisa usar uma categoria ativa.", context.exception.message_dict["category"])
-        self.assertIn("Produto ativo precisa usar uma unidade ativa.", context.exception.message_dict["unit"])
+        self.assertIn("Produto ativo precisa usar uma categoria ativa.", context.exception.message_dict["is_active"])
+        self.assertIn("Produto ativo precisa usar uma unidade ativa.", context.exception.message_dict["is_active"])
 
     def test_inactive_product_can_keep_inactive_category_and_unit(self):
         organization = Organization.objects.create(name="Primeira")
@@ -77,6 +77,26 @@ class CatalogModelTests(TestCase):
         )
 
         self.assertFalse(product.is_active)
+
+    def test_list_editable_activation_with_inactive_relation_returns_active_field_error(self):
+        organization = Organization.objects.create(name="Primeira")
+        category = Category.objects.create(organization=organization, name="Bebidas", is_active=False)
+        unit = Unit.objects.create(organization=organization, name="Unidade", symbol="UN", is_active=True)
+        product = Product.objects.create(
+            organization=organization,
+            category=category,
+            unit=unit,
+            name="Camarao",
+            sku="CAMARAO-001",
+            price="10.00",
+            is_active=False,
+        )
+        form_class = forms.modelform_factory(Product, fields=["is_active"])
+
+        form = form_class(data={"is_active": "on"}, instance=product)
+
+        self.assertFalse(form.is_valid())
+        self.assertEqual(form.errors["is_active"], ["Produto ativo precisa usar uma categoria ativa."])
 
     def test_catalog_queryset_filters_by_organization(self):
         first_org = Organization.objects.create(name="Primeira")
