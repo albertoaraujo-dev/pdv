@@ -46,6 +46,11 @@ class Category(models.Model):
     def clean(self):
         errors = {}
         strip_text_fields(self, ["name"])
+        duplicate = Category.objects.filter(organization_id=self.organization_id, name__iexact=self.name)
+        if self.pk:
+            duplicate = duplicate.exclude(pk=self.pk)
+        if self.organization_id and self.name and duplicate.exists():
+            errors["name"] = "Já existe uma categoria com este nome nesta organização."
         if self.pk and not self.is_active and self.products.filter(is_active=True).exists():
             errors["is_active"] = "Não é possível inativar categoria com produtos ativos."
         if errors:
@@ -86,6 +91,11 @@ class Unit(models.Model):
         errors = {}
         strip_text_fields(self, ["name", "symbol"])
         uppercase_text_fields(self, ["symbol"])
+        duplicate = Unit.objects.filter(organization_id=self.organization_id, symbol=self.symbol)
+        if self.pk:
+            duplicate = duplicate.exclude(pk=self.pk)
+        if self.organization_id and self.symbol and duplicate.exists():
+            errors["symbol"] = "Já existe uma unidade com este símbolo nesta organização."
         if self.pk and not self.is_active and self.products.filter(is_active=True).exists():
             errors["is_active"] = "Não é possível inativar unidade com produtos ativos."
         if errors:
@@ -130,6 +140,11 @@ class Product(models.Model):
         errors = {}
         strip_text_fields(self, ["name", "sku", "barcode"])
         uppercase_text_fields(self, ["sku", "barcode"])
+        duplicate = Product.objects.filter(organization_id=self.organization_id, sku=self.sku)
+        if self.pk:
+            duplicate = duplicate.exclude(pk=self.pk)
+        if self.organization_id and self.sku and duplicate.exists():
+            errors["sku"] = "Já existe um produto com este SKU nesta organização."
         if self.price is not None and self.price < 0:
             errors["price"] = "O preço não pode ser negativo."
         if self.category_id and self.category.organization_id != self.organization_id:

@@ -103,6 +103,21 @@ class TenantScopedAdminMixin:
             exclude.append("organization")
         return exclude
 
+    def get_form(self, request, obj=None, change=False, **kwargs):
+        form_class = super().get_form(request, obj, change, **kwargs)
+        organization = get_user_organization(request.user)
+        has_organization_field = any(field.name == "organization" for field in self.model._meta.fields)
+        should_set_organization = has_organization_field and not request.user.is_superuser and obj is None and organization
+        if not should_set_organization:
+            return form_class
+
+        class TenantAwareForm(form_class):
+            def _post_clean(self):
+                self.instance.organization = organization
+                super()._post_clean()
+
+        return TenantAwareForm
+
     def save_model(self, request, obj, form, change):
         organization = get_user_organization(request.user)
         if organization and not request.user.is_superuser:

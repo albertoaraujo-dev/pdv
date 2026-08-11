@@ -107,6 +107,23 @@ class CatalogModelTests(TestCase):
         self.assertEqual(product.sku, "AGUA-001")
         self.assertEqual(product.barcode, "ABC789")
 
+    def test_catalog_duplicates_raise_field_errors_after_normalization(self):
+        organization = Organization.objects.create(name="Primeira")
+        category = Category.objects.create(organization=organization, name="Bebidas")
+        unit = Unit.objects.create(organization=organization, name="Unidade", symbol="UN")
+        Product.objects.create(organization=organization, category=category, unit=unit, name="Agua", sku="AGUA-001", price="3.50")
+
+        with self.assertRaises(ValidationError) as category_error:
+            Category.objects.create(organization=organization, name=" bebidas ")
+        with self.assertRaises(ValidationError) as unit_error:
+            Unit.objects.create(organization=organization, name="Unidade", symbol=" un ")
+        with self.assertRaises(ValidationError) as product_error:
+            Product.objects.create(organization=organization, category=category, unit=unit, name="Agua 2", sku=" agua-001 ", price="4.50")
+
+        self.assertEqual(category_error.exception.message_dict["name"], ["Já existe uma categoria com este nome nesta organização."])
+        self.assertEqual(unit_error.exception.message_dict["symbol"], ["Já existe uma unidade com este símbolo nesta organização."])
+        self.assertEqual(product_error.exception.message_dict["sku"], ["Já existe um produto com este SKU nesta organização."])
+
     def test_category_with_active_products_cannot_be_deactivated(self):
         organization = Organization.objects.create(name="Primeira")
         category = Category.objects.create(organization=organization, name="Bebidas")
@@ -256,6 +273,24 @@ class CatalogAdminScopeTests(TestCase):
 
         self.assertNotIn("organization", category_form.base_fields)
         self.assertNotIn("organization", product_form.base_fields)
+
+    def test_manager_category_create_form_validates_with_user_organization(self):
+        model_admin = CategoryAdmin(Category, admin.site)
+        form_class = model_admin.get_form(self.request_for(self.manager), obj=None)
+
+        form = form_class(data={"name": "Doces", "is_active": "on"})
+
+        self.assertTrue(form.is_valid(), form.errors.as_data())
+        self.assertEqual(form.instance.organization, self.first_org)
+
+    def test_manager_category_create_form_shows_duplicate_field_error(self):
+        model_admin = CategoryAdmin(Category, admin.site)
+        form_class = model_admin.get_form(self.request_for(self.manager), obj=None)
+
+        form = form_class(data={"name": " Bebidas ", "is_active": "on"})
+
+        self.assertFalse(form.is_valid())
+        self.assertEqual(form.errors["name"], ["Já existe uma categoria com este nome nesta organização."])
 
     def test_manager_catalog_fieldsets_omit_organization_on_create(self):
         category_admin = CategoryAdmin(Category, admin.site)
