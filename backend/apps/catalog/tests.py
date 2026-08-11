@@ -89,14 +89,14 @@ class CatalogModelTests(TestCase):
     def test_catalog_text_fields_are_trimmed_on_save(self):
         organization = Organization.objects.create(name="Primeira")
         category = Category.objects.create(organization=organization, name=" Bebidas ")
-        unit = Unit.objects.create(organization=organization, name=" Unidade ", symbol=" UN ")
+        unit = Unit.objects.create(organization=organization, name=" Unidade ", symbol=" un ")
         product = Product.objects.create(
             organization=organization,
             category=category,
             unit=unit,
             name=" Agua ",
-            sku=" AGUA-001 ",
-            barcode=" 7891000000010 ",
+            sku=" agua-001 ",
+            barcode=" abc789 ",
             price="3.50",
         )
 
@@ -105,7 +105,7 @@ class CatalogModelTests(TestCase):
         self.assertEqual(unit.symbol, "UN")
         self.assertEqual(product.name, "Agua")
         self.assertEqual(product.sku, "AGUA-001")
-        self.assertEqual(product.barcode, "7891000000010")
+        self.assertEqual(product.barcode, "ABC789")
 
     def test_category_with_active_products_cannot_be_deactivated(self):
         organization = Organization.objects.create(name="Primeira")
