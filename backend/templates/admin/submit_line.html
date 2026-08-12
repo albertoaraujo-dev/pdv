@@ -7,7 +7,7 @@
             {% block submit-row %}
                 {% if show_save %}
                     {% component "unfold/components/button.html" with submit=1 form=opts.model_name|add:"_form" name="_save" class="w-full lg:w-auto" %}
-                        {% trans "Save" %}
+                        Salvar
                     {% endcomponent %}
                 {% endif %}
 
@@ -26,22 +26,22 @@
                 {% if show_save_and_continue %}
                     {% component "unfold/components/button.html" with submit=1 form=opts.model_name|add:"_form" name="_continue" variant="default" class="w-full lg:w-auto" %}
                         {% if can_change %}
-                            {% trans "Save and continue editing" %}
+                            Salvar e continuar editando
                         {% else %}
-                            {% trans "Save and view" %}
+                            Salvar e visualizar
                         {% endif %}
                     {% endcomponent %}
                 {% endif %}
 
                 {% if show_save_and_add_another %}
                     {% component "unfold/components/button.html" with submit=1 form=opts.model_name|add:"_form" name="_addanother" variant="default" class="w-full lg:w-auto" %}
-                        {% trans "Save and add another" %}
+                        Salvar e adicionar outro
                     {% endcomponent %}
                 {% endif %}
 
                 {% if show_save_as_new %}
                     {% component "unfold/components/button.html" with submit=1 form=opts.model_name|add:"_form" name="_saveasnew" variant="default" class="w-full lg:w-auto" %}
-                        {% trans "Save as new" %}
+                        Salvar como novo
                     {% endcomponent %}
                 {% endif %}
 
@@ -60,7 +60,7 @@
                         {% add_preserved_filters delete_url as link %}
 
                         {% component "unfold/components/button.html" with href=link variant="danger" class="mr-auto w-full lg:w-auto" %}
-                            {% trans "Delete" %} {{ opts.verbose_name }}
+                            Excluir {{ opts.verbose_name }}
                         {% endcomponent %}
                     {% endif %}
                 </div>
