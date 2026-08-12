@@ -89,6 +89,19 @@ class TenantAdminScopeTests(TestCase):
         self.assertFalse(model_admin.has_delete_permission(request, self.first_org))
         self.assertEqual(model_admin.get_readonly_fields(request, self.first_org), ("is_active", "created_at", "updated_at"))
 
+    def test_manager_management_actions_hide_bulk_delete(self):
+        request = self.request_for(self.manager)
+
+        self.assertNotIn("delete_selected", OrganizationAdmin(Organization, admin.site).get_actions(request))
+        self.assertNotIn("delete_selected", StoreAdmin(Store, admin.site).get_actions(request))
+        self.assertNotIn("delete_selected", UserAdmin(get_user_model(), admin.site).get_actions(request))
+
+    def test_superuser_management_actions_keep_bulk_delete(self):
+        superuser = get_user_model().objects.create_superuser(username="root", password="test-pass")
+        request = self.request_for(superuser)
+
+        self.assertIn("delete_selected", StoreAdmin(Store, admin.site).get_actions(request))
+
     def test_manager_only_sees_allowed_stores_in_admin(self):
         model_admin = StoreAdmin(Store, admin.site)
 

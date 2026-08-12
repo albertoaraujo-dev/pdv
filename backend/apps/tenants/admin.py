@@ -72,6 +72,12 @@ class TenantScopedAdminMixin:
             return queryset.none()
         return queryset.filter(**{self.tenant_field: organization})
 
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if not request.user.is_superuser:
+            actions.pop("delete_selected", None)
+        return actions
+
     def get_queryset(self, request):
         return self.get_tenant_queryset(request, super().get_queryset(request))
 
@@ -136,6 +142,12 @@ class UserAdmin(DjangoUserAdmin, ModelAdmin):
     add_form = ManagedUserCreationForm
     change_form_show_cancel_button = True
     list_per_page = 25
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if not request.user.is_superuser:
+            actions.pop("delete_selected", None)
+        return actions
 
     def get_queryset(self, request):
         queryset = super().get_queryset(request)
@@ -230,6 +242,12 @@ class OrganizationAdmin(ModelAdmin):
     list_filter = ["is_active"]
     list_per_page = 25
     search_fields = ["name", "legal_name", "document"]
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if not request.user.is_superuser:
+            actions.pop("delete_selected", None)
+        return actions
 
     def get_queryset(self, request):
         queryset = super().get_queryset(request)
