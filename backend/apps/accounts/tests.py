@@ -669,6 +669,25 @@ class AdminSitePolicyTests(TestCase):
         self.assertTrue(model_admin.has_module_permission(self.request_for(superuser)))
         self.assertFalse(model_admin.has_module_permission(self.request_for(manager)))
 
+    def test_security_admin_uses_localized_user_agent_label(self):
+        login_admin = LoginAttemptAdmin(LoginAttempt, admin.site)
+        event_admin = AuthEventAdmin(AuthEvent, admin.site)
+        login_attempt = LoginAttempt(username="manager", normalized_username="manager", user_agent="Mozilla/5.0")
+        auth_event = AuthEvent(username="manager", user_agent="Mozilla/5.0")
+
+        self.assertIn("browser_device", login_admin.readonly_fields)
+        self.assertIn("browser_device", event_admin.readonly_fields)
+        self.assertIn("browser_device", login_admin.fields)
+        self.assertIn("browser_device", event_admin.fields)
+        self.assertNotIn("user_agent", login_admin.readonly_fields)
+        self.assertNotIn("user_agent", event_admin.readonly_fields)
+        self.assertNotIn("user_agent", login_admin.fields)
+        self.assertNotIn("user_agent", event_admin.fields)
+        self.assertEqual(login_admin.browser_device.short_description, "navegador/dispositivo")
+        self.assertEqual(event_admin.browser_device.short_description, "navegador/dispositivo")
+        self.assertEqual(login_admin.browser_device(login_attempt), "Mozilla/5.0")
+        self.assertEqual(event_admin.browser_device(auth_event), "Mozilla/5.0")
+
 
 class AdminLoginAuditTests(TestCase):
     def setUp(self):

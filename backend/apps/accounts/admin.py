@@ -62,7 +62,12 @@ class LoginAttemptAdmin(ModelAdmin):
     list_display = ["created_at", "username", "ip_address", "status", "reason"]
     list_filter = ["status", "created_at"]
     search_fields = ["username", "normalized_username", "ip_address", "user_agent", "reason"]
-    readonly_fields = ["username", "normalized_username", "ip_address", "user_agent", "status", "reason", "created_at"]
+    fields = ["username", "normalized_username", "ip_address", "browser_device", "status", "reason", "created_at"]
+    readonly_fields = ["username", "normalized_username", "ip_address", "browser_device", "status", "reason", "created_at"]
+
+    @admin.display(description="navegador/dispositivo")
+    def browser_device(self, obj):
+        return obj.user_agent
 
     def has_module_permission(self, request):
         return request.user.is_superuser
@@ -85,7 +90,12 @@ class AuthEventAdmin(ModelAdmin):
     list_display = ["created_at", "username", "event_type", "ip_address", "reason"]
     list_filter = ["event_type", "created_at"]
     search_fields = ["username", "ip_address", "user_agent", "reason"]
-    readonly_fields = ["user", "username", "event_type", "ip_address", "user_agent", "reason", "created_at"]
+    fields = ["user", "username", "event_type", "ip_address", "browser_device", "reason", "created_at"]
+    readonly_fields = ["user", "username", "event_type", "ip_address", "browser_device", "reason", "created_at"]
+
+    @admin.display(description="navegador/dispositivo")
+    def browser_device(self, obj):
+        return obj.user_agent
 
     def has_module_permission(self, request):
         return request.user.is_superuser
