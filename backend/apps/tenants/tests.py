@@ -66,6 +66,20 @@ class TenantAdminScopeTests(TestCase):
 
         self.assertEqual(list(queryset), [self.first_org])
 
+    def test_management_lists_show_usage_counts(self):
+        organization_admin = OrganizationAdmin(Organization, admin.site)
+        store_admin = StoreAdmin(Store, admin.site)
+
+        organization = organization_admin.get_queryset(self.request_for(self.manager)).get(pk=self.first_org.pk)
+        store = store_admin.get_queryset(self.request_for(self.manager)).get(pk=self.first_store.pk)
+
+        self.assertIn("active_stores_count", organization_admin.list_display)
+        self.assertIn("active_users_count", store_admin.list_display)
+        self.assertEqual(organization_admin.active_stores_count(organization), 1)
+        self.assertEqual(store_admin.active_users_count(store), 2)
+        self.assertEqual(organization_admin.active_stores_count.short_description, "lojas ativas")
+        self.assertEqual(store_admin.active_users_count.short_description, "usuários ativos")
+
     def test_manager_can_view_and_change_own_organization_in_admin(self):
         model_admin = OrganizationAdmin(Organization, admin.site)
         request = self.request_for(self.manager)

@@ -4,6 +4,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.contrib.auth.forms import UserCreationForm
 from django import forms
+from django.db.models import Count, Q
 from unfold.admin import ModelAdmin
 
 from apps.accounts.models import AuthEvent, record_auth_event
@@ -237,7 +238,7 @@ class UserAdmin(DjangoUserAdmin, ModelAdmin):
 @admin.register(Organization)
 class OrganizationAdmin(ModelAdmin):
     change_form_show_cancel_button = True
-    list_display = ["name", "document", "is_active", "created_at"]
+    list_display = ["name", "document", "active_stores_count", "is_active", "created_at"]
     list_display_links = ["name"]
     list_filter = ["is_active"]
     list_per_page = 25
@@ -252,13 +253,17 @@ class OrganizationAdmin(ModelAdmin):
     def get_queryset(self, request):
         queryset = super().get_queryset(request)
         if request.user.is_superuser:
-            return queryset
+            return queryset.annotate(active_stores_count=Count("stores", filter=Q(stores__is_active=True)))
         if not can_manage_organization_settings(request.user):
             return queryset.none()
         organization = get_user_organization(request.user)
         if not organization:
             return queryset.none()
-        return queryset.filter(pk=organization.pk)
+        return queryset.filter(pk=organization.pk).annotate(active_stores_count=Count("stores", filter=Q(stores__is_active=True)))
+
+    @admin.display(ordering="active_stores_count", description="lojas ativas")
+    def active_stores_count(self, obj):
+        return obj.active_stores_count
 
     def get_readonly_fields(self, request, obj=None):
         readonly_fields = list(super().get_readonly_fields(request, obj))
@@ -306,7 +311,7 @@ class OrganizationAdmin(ModelAdmin):
 
 @admin.register(Store)
 class StoreAdmin(TenantScopedAdminMixin, ModelAdmin):
-    list_display = ["name", "code", "organization", "is_active"]
+    list_display = ["name", "code", "organization", "active_users_count", "is_active"]
     list_display_links = ["name", "code"]
     list_filter = ["organization", "is_active"]
     list_per_page = 25
@@ -325,8 +330,12 @@ class StoreAdmin(TenantScopedAdminMixin, ModelAdmin):
     def get_queryset(self, request):
         queryset = super().get_queryset(request)
         if request.user.is_superuser:
-            return queryset
-        return queryset.filter(pk__in=get_visible_stores(request.user))
+            return queryset.annotate(active_users_count=Count("user_accesses", filter=Q(user_accesses__is_active=True, user_accesses__profile__is_active=True)))
+        return queryset.filter(pk__in=get_visible_stores(request.user)).annotate(active_users_count=Count("user_accesses", filter=Q(user_accesses__is_active=True, user_accesses__profile__is_active=True)))
+
+    @admin.display(ordering="active_users_count", description="usuários ativos")
+    def active_users_count(self, obj):
+        return obj.active_users_count
 
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
