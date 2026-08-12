@@ -59,6 +59,12 @@ class SimpleCatalogSaveActionsMixin:
             choices[0] = ("", "Selecionar ação")
         return choices
 
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if not request.user.is_superuser:
+            actions.pop("delete_selected", None)
+        return actions
+
 
 def is_product_relation_autocomplete(request, field_name):
     return (
