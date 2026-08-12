@@ -62,6 +62,12 @@ def is_product_relation_autocomplete(request, field_name):
     )
 
 
+def product_count_message(count, singular, plural):
+    if count == 1:
+        return f"1 produto {singular}"
+    return f"{count} produtos {plural}"
+
+
 @admin.register(Category)
 class CategoryAdmin(SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelAdmin):
     list_display = ["name", "organization", "active_products_count", "is_active"]
@@ -162,9 +168,13 @@ class ProductAdmin(SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelA
             self.message_user(request, "Nenhum produto ativo foi selecionado para inativar.", level=messages.ERROR)
             return
         if inactive_count:
-            self.message_user(request, f"{updated} produto(s) inativado(s). {inactive_count} já estava(m) inativo(s).", level=messages.WARNING)
+            self.message_user(
+                request,
+                f"{product_count_message(updated, 'inativado', 'inativados')}. {product_count_message(inactive_count, 'já estava inativo', 'já estavam inativos')}.",
+                level=messages.WARNING,
+            )
             return
-        self.message_user(request, f"{updated} produto(s) inativado(s) com sucesso.")
+        self.message_user(request, f"{product_count_message(updated, 'inativado', 'inativados')} com sucesso.")
 
     @admin.action(description="Ativar produtos selecionados")
     def activate_products(self, request, queryset):
@@ -181,12 +191,12 @@ class ProductAdmin(SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelA
         if invalid_count or already_active_count:
             details = []
             if invalid_count:
-                details.append(f"{invalid_count} não pôde/puderam ser ativado(s) por categoria ou unidade inativa")
+                details.append(product_count_message(invalid_count, "não pôde ser ativado por categoria ou unidade inativa", "não puderam ser ativados por categoria ou unidade inativa"))
             if already_active_count:
-                details.append(f"{already_active_count} já estava(m) ativo(s)")
-            self.message_user(request, f"{updated} produto(s) ativado(s). {'; '.join(details)}.", level=messages.WARNING)
+                details.append(product_count_message(already_active_count, "já estava ativo", "já estavam ativos"))
+            self.message_user(request, f"{product_count_message(updated, 'ativado', 'ativados')}. {'; '.join(details)}.", level=messages.WARNING)
             return
-        self.message_user(request, f"{updated} produto(s) ativado(s) com sucesso.")
+        self.message_user(request, f"{product_count_message(updated, 'ativado', 'ativados')} com sucesso.")
 
     def get_action_choices(self, request, default_choices=None):
         choices = super().get_action_choices(request, default_choices)

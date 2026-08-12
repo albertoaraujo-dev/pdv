@@ -6,7 +6,7 @@ from django.test import RequestFactory, TestCase
 from django.urls import reverse
 from rest_framework.test import APIClient
 
-from apps.catalog.admin import BooleanRadioFilter, CategoryAdmin, ProductAdmin, SimpleCatalogSaveActionsMixin, TenantCategoryFilter, TenantUnitFilter, UnitAdmin, is_product_relation_autocomplete
+from apps.catalog.admin import BooleanRadioFilter, CategoryAdmin, ProductAdmin, SimpleCatalogSaveActionsMixin, TenantCategoryFilter, TenantUnitFilter, UnitAdmin, is_product_relation_autocomplete, product_count_message
 from apps.catalog.models import Category, Product, Unit
 from apps.tenants.models import Organization, Store, UserProfile, UserStoreAccess
 
@@ -427,7 +427,7 @@ class CatalogAdminScopeTests(TestCase):
 
         self.assertIn("deactivate_products", model_admin.actions)
         self.assertFalse(self.first_product.is_active)
-        self.assertEqual(messages, [("1 produto(s) inativado(s) com sucesso.", None)])
+        self.assertEqual(messages, [("1 produto inativado com sucesso.", None)])
 
     def test_product_admin_can_activate_selected_products(self):
         self.first_product.is_active = False
@@ -442,7 +442,11 @@ class CatalogAdminScopeTests(TestCase):
 
         self.assertIn("activate_products", model_admin.actions)
         self.assertTrue(self.first_product.is_active)
-        self.assertEqual(messages, [("1 produto(s) ativado(s) com sucesso.", None)])
+        self.assertEqual(messages, [("1 produto ativado com sucesso.", None)])
+
+    def test_product_admin_count_messages_use_natural_plural(self):
+        self.assertEqual(product_count_message(1, "ativado", "ativados"), "1 produto ativado")
+        self.assertEqual(product_count_message(2, "ativado", "ativados"), "2 produtos ativados")
 
     def test_product_admin_activate_action_blocks_invalid_inactive_products(self):
         inactive_category = Category.objects.create(organization=self.first_org, name="Inativa", is_active=False)
