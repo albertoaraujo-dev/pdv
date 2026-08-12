@@ -651,6 +651,9 @@ class AdminSitePolicyTests(TestCase):
         self.assertTrue(admin.site.has_permission(self.request_for(manager)))
         self.assertFalse(admin.site.has_permission(self.request_for(operator)))
 
+    def test_admin_site_uses_localized_empty_value(self):
+        self.assertEqual(admin.site.empty_value_display, "Não informado")
+
     def test_only_superuser_sees_login_attempts_admin(self):
         model_admin = LoginAttemptAdmin(LoginAttempt, admin.site)
         superuser = get_user_model().objects.create_superuser(username="root", password="test-pass")

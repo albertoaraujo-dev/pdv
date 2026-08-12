@@ -41,6 +41,7 @@ class AuditedAdminAuthenticationForm(AuthenticationForm):
 
 
 admin.site.login_form = AuditedAdminAuthenticationForm
+admin.site.empty_value_display = "Não informado"
 admin.site.site_header = "PDV Final"
 admin.site.site_title = "PDV Final"
 admin.site.index_title = "Painel administrativo"
