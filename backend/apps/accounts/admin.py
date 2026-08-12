@@ -19,24 +19,24 @@ class AuditedAdminAuthenticationForm(AuthenticationForm):
         username = self.cleaned_data.get("username", "")
 
         if is_login_locked(self.request, username):
-            record_login_attempt(self.request, username, LoginAttempt.Status.LOCKED, "Muitas tentativas inválidas no admin.")
+            record_login_attempt(self.request, username, LoginAttempt.Status.LOCKED, "Muitas tentativas inválidas no painel administrativo.")
             raise ValidationError(self.error_messages["locked"], code="locked")
 
         try:
             cleaned_data = super().clean()
         except ValidationError:
-            record_login_attempt(self.request, username, LoginAttempt.Status.FAILED, "Credenciais inválidas no admin.")
+            record_login_attempt(self.request, username, LoginAttempt.Status.FAILED, "Credenciais inválidas no painel administrativo.")
             raise
 
         if is_inactive_for_login(self.user_cache):
-            record_login_attempt(self.request, username, LoginAttempt.Status.FAILED, "Usuário inativo no admin.")
+            record_login_attempt(self.request, username, LoginAttempt.Status.FAILED, "Usuário inativo no painel administrativo.")
             raise ValidationError("Usuário inativo.", code="inactive")
 
         if must_change_password(self.user_cache):
-            record_login_attempt(self.request, username, LoginAttempt.Status.FAILED, "Troca de senha obrigatória no admin.")
+            record_login_attempt(self.request, username, LoginAttempt.Status.FAILED, "Troca de senha obrigatória no painel administrativo.")
             raise ValidationError("Troque sua senha antes de acessar o painel administrativo.", code="password_change_required")
 
-        record_login_attempt(self.request, username, LoginAttempt.Status.SUCCESS, "Login realizado no admin.")
+        record_login_attempt(self.request, username, LoginAttempt.Status.SUCCESS, "Login realizado no painel administrativo.")
         return cleaned_data
 
 
@@ -44,6 +44,10 @@ admin.site.login_form = AuditedAdminAuthenticationForm
 admin.site.site_header = "PDV Final"
 admin.site.site_title = "PDV Final"
 admin.site.index_title = "Painel administrativo"
+
+
+def localized_admin_reason(reason):
+    return (reason or "").replace(" no admin.", " no painel administrativo.").replace(" do admin ", " do painel administrativo ")
 
 
 try:
@@ -59,15 +63,19 @@ class GroupAdmin(DjangoGroupAdmin, ModelAdmin):
 
 @admin.register(LoginAttempt)
 class LoginAttemptAdmin(ModelAdmin):
-    list_display = ["created_at", "username", "ip_address", "status", "reason"]
+    list_display = ["created_at", "username", "ip_address", "status", "display_reason"]
     list_filter = ["status", "created_at"]
     search_fields = ["username", "normalized_username", "ip_address", "user_agent", "reason"]
-    fields = ["username", "normalized_username", "ip_address", "browser_device", "status", "reason", "created_at"]
-    readonly_fields = ["username", "normalized_username", "ip_address", "browser_device", "status", "reason", "created_at"]
+    fields = ["username", "normalized_username", "ip_address", "browser_device", "status", "display_reason", "created_at"]
+    readonly_fields = ["username", "normalized_username", "ip_address", "browser_device", "status", "display_reason", "created_at"]
 
     @admin.display(description="navegador/dispositivo")
     def browser_device(self, obj):
         return obj.user_agent
+
+    @admin.display(description="motivo", ordering="reason")
+    def display_reason(self, obj):
+        return localized_admin_reason(obj.reason)
 
     def has_module_permission(self, request):
         return request.user.is_superuser
@@ -87,15 +95,19 @@ class LoginAttemptAdmin(ModelAdmin):
 
 @admin.register(AuthEvent)
 class AuthEventAdmin(ModelAdmin):
-    list_display = ["created_at", "username", "event_type", "ip_address", "reason"]
+    list_display = ["created_at", "username", "event_type", "ip_address", "display_reason"]
     list_filter = ["event_type", "created_at"]
     search_fields = ["username", "ip_address", "user_agent", "reason"]
-    fields = ["user", "username", "event_type", "ip_address", "browser_device", "reason", "created_at"]
-    readonly_fields = ["user", "username", "event_type", "ip_address", "browser_device", "reason", "created_at"]
+    fields = ["user", "username", "event_type", "ip_address", "browser_device", "display_reason", "created_at"]
+    readonly_fields = ["user", "username", "event_type", "ip_address", "browser_device", "display_reason", "created_at"]
 
     @admin.display(description="navegador/dispositivo")
     def browser_device(self, obj):
         return obj.user_agent
+
+    @admin.display(description="motivo", ordering="reason")
+    def display_reason(self, obj):
+        return localized_admin_reason(obj.reason)
 
     def has_module_permission(self, request):
         return request.user.is_superuser

@@ -4,7 +4,7 @@ from django.conf import settings
 from django.test import Client, RequestFactory, TestCase, override_settings
 from django.urls import reverse
 
-from apps.accounts.admin import AuthEventAdmin, LoginAttemptAdmin
+from apps.accounts.admin import AuthEventAdmin, LoginAttemptAdmin, localized_admin_reason
 from apps.accounts.models import AuthEvent, LoginAttempt
 from apps.accounts.policies import can_access_admin, can_access_pos, get_allowed_stores, get_manageable_profiles, get_visible_stores
 from apps.tenants.models import Organization, Store, UserProfile, UserStoreAccess
@@ -669,24 +669,40 @@ class AdminSitePolicyTests(TestCase):
         self.assertTrue(model_admin.has_module_permission(self.request_for(superuser)))
         self.assertFalse(model_admin.has_module_permission(self.request_for(manager)))
 
-    def test_security_admin_uses_localized_user_agent_label(self):
+    def test_security_admin_uses_localized_readonly_labels(self):
         login_admin = LoginAttemptAdmin(LoginAttempt, admin.site)
         event_admin = AuthEventAdmin(AuthEvent, admin.site)
-        login_attempt = LoginAttempt(username="manager", normalized_username="manager", user_agent="Mozilla/5.0")
-        auth_event = AuthEvent(username="manager", user_agent="Mozilla/5.0")
+        login_attempt = LoginAttempt(username="manager", normalized_username="manager", user_agent="Mozilla/5.0", reason="Login realizado no admin.")
+        auth_event = AuthEvent(username="manager", user_agent="Mozilla/5.0", reason="Sessão do admin revogada por usuário inativo.")
 
         self.assertIn("browser_device", login_admin.readonly_fields)
         self.assertIn("browser_device", event_admin.readonly_fields)
         self.assertIn("browser_device", login_admin.fields)
         self.assertIn("browser_device", event_admin.fields)
+        self.assertIn("display_reason", login_admin.readonly_fields)
+        self.assertIn("display_reason", event_admin.readonly_fields)
+        self.assertIn("display_reason", login_admin.fields)
+        self.assertIn("display_reason", event_admin.fields)
         self.assertNotIn("user_agent", login_admin.readonly_fields)
         self.assertNotIn("user_agent", event_admin.readonly_fields)
         self.assertNotIn("user_agent", login_admin.fields)
         self.assertNotIn("user_agent", event_admin.fields)
+        self.assertNotIn("reason", login_admin.readonly_fields)
+        self.assertNotIn("reason", event_admin.readonly_fields)
+        self.assertNotIn("reason", login_admin.fields)
+        self.assertNotIn("reason", event_admin.fields)
         self.assertEqual(login_admin.browser_device.short_description, "navegador/dispositivo")
         self.assertEqual(event_admin.browser_device.short_description, "navegador/dispositivo")
+        self.assertEqual(login_admin.display_reason.short_description, "motivo")
+        self.assertEqual(event_admin.display_reason.short_description, "motivo")
         self.assertEqual(login_admin.browser_device(login_attempt), "Mozilla/5.0")
         self.assertEqual(event_admin.browser_device(auth_event), "Mozilla/5.0")
+        self.assertEqual(login_admin.display_reason(login_attempt), "Login realizado no painel administrativo.")
+        self.assertEqual(event_admin.display_reason(auth_event), "Sessão do painel administrativo revogada por usuário inativo.")
+
+    def test_localized_admin_reason_preserves_other_text(self):
+        self.assertEqual(localized_admin_reason("Credenciais inválidas no admin."), "Credenciais inválidas no painel administrativo.")
+        self.assertEqual(localized_admin_reason("Motivo manual."), "Motivo manual.")
 
 
 class AdminLoginAuditTests(TestCase):
@@ -704,6 +720,7 @@ class AdminLoginAuditTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(LoginAttempt.objects.get().status, LoginAttempt.Status.SUCCESS)
+        self.assertEqual(LoginAttempt.objects.get().reason, "Login realizado no painel administrativo.")
 
     def test_admin_login_locks_after_repeated_failures(self):
         for _ in range(5):
@@ -795,3 +812,4 @@ class AdminLoginAuditTests(TestCase):
         self.assertIn(reverse("admin:login"), response["Location"])
         self.assertEqual(AuthEvent.objects.get().event_type, AuthEvent.EventType.SESSION_REVOKED)
         self.assertEqual(AuthEvent.objects.get().user, self.manager)
+        self.assertEqual(AuthEvent.objects.get().reason, "Sessão do painel administrativo revogada por usuário inativo.")

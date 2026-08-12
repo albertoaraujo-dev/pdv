@@ -28,7 +28,7 @@ User = get_user_model()
 
 def admin_has_permission(request):
     if request.user.is_authenticated and is_inactive_for_login(request.user):
-        record_auth_event(request, request.user, AuthEvent.EventType.SESSION_REVOKED, "Sessão do admin revogada por usuário inativo.")
+        record_auth_event(request, request.user, AuthEvent.EventType.SESSION_REVOKED, "Sessão do painel administrativo revogada por usuário inativo.")
         if hasattr(request, "session"):
             logout(request)
         return False
