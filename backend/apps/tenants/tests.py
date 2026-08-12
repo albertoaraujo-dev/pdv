@@ -87,7 +87,39 @@ class TenantAdminScopeTests(TestCase):
 
         self.assertFalse(model_admin.has_add_permission(request))
         self.assertFalse(model_admin.has_delete_permission(request, self.first_org))
-        self.assertEqual(model_admin.get_readonly_fields(request, self.first_org), ("is_active", "created_at", "updated_at"))
+        self.assertEqual(model_admin.get_readonly_fields(request, self.first_org), ["created_at", "updated_at", "is_active"])
+
+    def test_management_forms_use_localized_fieldsets(self):
+        organization_admin = OrganizationAdmin(Organization, admin.site)
+        store_admin = StoreAdmin(Store, admin.site)
+        request = self.request_for(self.manager)
+
+        self.assertEqual(
+            organization_admin.get_fieldsets(request, self.first_org),
+            [
+                ("Dados da organização", {"fields": ("name", "legal_name", "document")}),
+                ("Status", {"fields": ("is_active",)}),
+                ("Controle", {"fields": ("created_at", "updated_at")}),
+            ],
+        )
+        self.assertEqual(
+            store_admin.get_fieldsets(request, self.first_store),
+            [
+                ("Dados da loja", {"fields": ["organization", "name", "code", "is_active"]}),
+                ("Controle", {"fields": ["created_at", "updated_at"]}),
+            ],
+        )
+        self.assertIn("created_at", store_admin.get_readonly_fields(request, self.first_store))
+        self.assertIn("updated_at", store_admin.get_readonly_fields(request, self.first_store))
+
+    def test_superuser_organization_control_fields_are_readonly(self):
+        model_admin = OrganizationAdmin(Organization, admin.site)
+        superuser = get_user_model().objects.create_superuser(username="root", password="test-pass")
+
+        readonly_fields = model_admin.get_readonly_fields(self.request_for(superuser), self.first_org)
+
+        self.assertIn("created_at", readonly_fields)
+        self.assertIn("updated_at", readonly_fields)
 
     def test_manager_management_actions_hide_bulk_delete(self):
         request = self.request_for(self.manager)

@@ -261,9 +261,25 @@ class OrganizationAdmin(ModelAdmin):
         return queryset.filter(pk=organization.pk)
 
     def get_readonly_fields(self, request, obj=None):
+        readonly_fields = list(super().get_readonly_fields(request, obj))
+        if obj is not None:
+            for field_name in ["created_at", "updated_at"]:
+                if field_name not in readonly_fields:
+                    readonly_fields.append(field_name)
         if request.user.is_superuser:
-            return super().get_readonly_fields(request, obj)
-        return ("is_active", "created_at", "updated_at")
+            return readonly_fields
+        if "is_active" not in readonly_fields:
+            readonly_fields.append("is_active")
+        return readonly_fields
+
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = [
+            ("Dados da organização", {"fields": ("name", "legal_name", "document")}),
+            ("Status", {"fields": ("is_active",)}),
+        ]
+        if obj is not None:
+            fieldsets.append(("Controle", {"fields": ("created_at", "updated_at")}))
+        return fieldsets
 
     def has_module_permission(self, request):
         return request.user.is_superuser or can_manage_organization_settings(request.user)
@@ -294,7 +310,17 @@ class StoreAdmin(TenantScopedAdminMixin, ModelAdmin):
     list_display_links = ["name", "code"]
     list_filter = ["organization", "is_active"]
     list_per_page = 25
+    readonly_fields = ["created_at", "updated_at"]
     search_fields = ["name", "code", "organization__name"]
+
+    def get_fieldsets(self, request, obj=None):
+        main_fields = ["name", "code", "is_active"]
+        if request.user.is_superuser or obj is not None:
+            main_fields.insert(0, "organization")
+        fieldsets = [("Dados da loja", {"fields": main_fields})]
+        if obj is not None:
+            fieldsets.append(("Controle", {"fields": ["created_at", "updated_at"]}))
+        return fieldsets
 
     def get_queryset(self, request):
         queryset = super().get_queryset(request)
