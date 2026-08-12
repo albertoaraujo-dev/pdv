@@ -6,7 +6,7 @@ from django.test import RequestFactory, TestCase
 from django.urls import reverse
 from rest_framework.test import APIClient
 
-from apps.catalog.admin import BooleanRadioFilter, CategoryAdmin, ProductAdmin, SimpleCatalogSaveActionsMixin, TenantCategoryFilter, TenantUnitFilter, UnitAdmin, is_product_relation_autocomplete, product_count_message
+from apps.catalog.admin import BooleanRadioFilter, CatalogStatusActionsMixin, CategoryAdmin, ProductAdmin, SimpleCatalogSaveActionsMixin, TenantCategoryFilter, TenantUnitFilter, UnitAdmin, is_product_relation_autocomplete, product_count_message
 from apps.catalog.models import Category, Product, Unit
 from apps.tenants.models import Organization, Store, UserProfile, UserStoreAccess
 
@@ -336,6 +336,53 @@ class CatalogAdminScopeTests(TestCase):
 
         self.assertTrue(category_admin.change_form_show_cancel_button)
         self.assertTrue(product_admin.change_form_show_cancel_button)
+
+    def test_catalog_status_actions_use_localized_placeholder(self):
+        category_admin = CategoryAdmin(Category, admin.site)
+
+        choices = category_admin.get_action_choices(self.request_for(self.manager))
+
+        self.assertEqual(choices[0], ("", "Selecionar ação"))
+
+    def test_category_admin_can_activate_selected_categories(self):
+        category = Category.objects.create(organization=self.first_org, name="Livre", is_active=False)
+        category_admin = CategoryAdmin(Category, admin.site)
+        request = self.request_for(self.manager)
+        messages = []
+        category_admin.message_user = lambda _request, message, **kwargs: messages.append((message, kwargs.get("level")))
+
+        category_admin.activate_selected(request, Category.objects.filter(pk=category.pk))
+        category.refresh_from_db()
+
+        self.assertIn("activate_selected", category_admin.actions)
+        self.assertTrue(category.is_active)
+        self.assertEqual(messages, [("1 categoria ativada com sucesso.", None)])
+
+    def test_category_admin_deactivate_action_blocks_categories_in_use(self):
+        category_admin = CategoryAdmin(Category, admin.site)
+        request = self.request_for(self.manager)
+        messages = []
+        category_admin.message_user = lambda _request, message, **kwargs: messages.append((message, kwargs.get("level")))
+
+        category_admin.deactivate_selected(request, Category.objects.filter(pk=self.first_category.pk))
+        self.first_category.refresh_from_db()
+
+        self.assertTrue(self.first_category.is_active)
+        self.assertEqual(messages, [("Nenhuma categoria pôde ser inativada. Verifique produtos ativos vinculados.", django_messages.ERROR)])
+
+    def test_unit_admin_can_deactivate_selected_units_without_active_products(self):
+        free_unit = Unit.objects.create(organization=self.first_org, name="Pacote", symbol="PC")
+        unit_admin = UnitAdmin(Unit, admin.site)
+        request = self.request_for(self.manager)
+        messages = []
+        unit_admin.message_user = lambda _request, message, **kwargs: messages.append((message, kwargs.get("level")))
+
+        unit_admin.deactivate_selected(request, Unit.objects.filter(pk=free_unit.pk))
+        free_unit.refresh_from_db()
+
+        self.assertIn("deactivate_selected", unit_admin.actions)
+        self.assertFalse(free_unit.is_active)
+        self.assertEqual(messages, [("1 unidade inativada com sucesso.", None)])
 
     def test_manager_catalog_forms_hide_secondary_save_buttons(self):
         class DummyBase:

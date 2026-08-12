@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.contrib import messages
 from django import forms
+from django.core.exceptions import ValidationError
 from django.db.models import Count, Q
 from django.utils.formats import number_format
 from unfold.admin import ModelAdmin
@@ -52,6 +53,12 @@ class SimpleCatalogSaveActionsMixin:
             context["show_save_and_add_another"] = False
         return super().render_change_form(request, context, add, change, form_url, obj)
 
+    def get_action_choices(self, request, default_choices=None):
+        choices = super().get_action_choices(request, default_choices)
+        if choices:
+            choices[0] = ("", "Selecionar ação")
+        return choices
+
 
 def is_product_relation_autocomplete(request, field_name):
     return (
@@ -68,8 +75,105 @@ def product_count_message(count, singular, plural):
     return f"{count} produtos {plural}"
 
 
+class CatalogStatusActionsMixin:
+    status_noun_singular = "registro"
+    status_noun_plural = "registros"
+    status_noun_gender = "masculine"
+    status_activated_singular = "ativado"
+    status_activated_plural = "ativados"
+    status_inactivated_singular = "inativado"
+    status_inactivated_plural = "inativados"
+    status_already_active_singular = "já estava ativo"
+    status_already_active_plural = "já estavam ativos"
+    status_already_inactive_singular = "já estava inativo"
+    status_already_inactive_plural = "já estavam inativos"
+    status_blocked_inactive_singular = "não pôde ser inativado por produtos ativos vinculados"
+    status_blocked_inactive_plural = "não puderam ser inativados por produtos ativos vinculados"
+
+    actions = ["activate_selected", "deactivate_selected"]
+
+    def status_count_message(self, count, singular, plural):
+        noun = self.status_noun_singular if count == 1 else self.status_noun_plural
+        status = singular if count == 1 else plural
+        return f"{count} {noun} {status}"
+
+    def no_selected_message(self, status):
+        if self.status_noun_gender == "feminine":
+            return f"Nenhuma {self.status_noun_singular} {status} foi selecionada."
+        return f"Nenhum {self.status_noun_singular} {status} foi selecionado."
+
+    def no_blocked_deactivation_message(self):
+        if self.status_noun_gender == "feminine":
+            return f"Nenhuma {self.status_noun_singular} pôde ser inativada. Verifique produtos ativos vinculados."
+        return f"Nenhum {self.status_noun_singular} pôde ser inativado. Verifique produtos ativos vinculados."
+
+    @admin.action(description="Ativar selecionados")
+    def activate_selected(self, request, queryset):
+        inactive_queryset = queryset.filter(is_active=False)
+        already_active_count = queryset.filter(is_active=True).count()
+        updated = 0
+        for obj in inactive_queryset:
+            obj.is_active = True
+            obj.save()
+            updated += 1
+        if updated == 0:
+            self.message_user(request, self.no_selected_message("inativo"), level=messages.ERROR)
+            return
+        if already_active_count:
+            self.message_user(
+                request,
+                f"{self.status_count_message(updated, self.status_activated_singular, self.status_activated_plural)}. {self.status_count_message(already_active_count, self.status_already_active_singular, self.status_already_active_plural)}.",
+                level=messages.WARNING,
+            )
+            return
+        self.message_user(request, f"{self.status_count_message(updated, self.status_activated_singular, self.status_activated_plural)} com sucesso.")
+
+    @admin.action(description="Inativar selecionados")
+    def deactivate_selected(self, request, queryset):
+        active_queryset = queryset.filter(is_active=True)
+        already_inactive_count = queryset.filter(is_active=False).count()
+        updated = 0
+        blocked = 0
+        for obj in active_queryset:
+            obj.is_active = False
+            try:
+                obj.save()
+            except ValidationError:
+                blocked += 1
+            else:
+                updated += 1
+        if updated == 0:
+            if blocked:
+                self.message_user(request, self.no_blocked_deactivation_message(), level=messages.ERROR)
+                return
+            self.message_user(request, self.no_selected_message("ativo"), level=messages.ERROR)
+            return
+        details = []
+        if blocked:
+            details.append(self.status_count_message(blocked, self.status_blocked_inactive_singular, self.status_blocked_inactive_plural))
+        if already_inactive_count:
+            details.append(self.status_count_message(already_inactive_count, self.status_already_inactive_singular, self.status_already_inactive_plural))
+        if details:
+            self.message_user(request, f"{self.status_count_message(updated, self.status_inactivated_singular, self.status_inactivated_plural)}. {'; '.join(details)}.", level=messages.WARNING)
+            return
+        self.message_user(request, f"{self.status_count_message(updated, self.status_inactivated_singular, self.status_inactivated_plural)} com sucesso.")
+
+
 @admin.register(Category)
-class CategoryAdmin(SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelAdmin):
+class CategoryAdmin(CatalogStatusActionsMixin, SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelAdmin):
+    status_noun_singular = "categoria"
+    status_noun_plural = "categorias"
+    status_noun_gender = "feminine"
+    status_activated_singular = "ativada"
+    status_activated_plural = "ativadas"
+    status_inactivated_singular = "inativada"
+    status_inactivated_plural = "inativadas"
+    status_already_active_singular = "já estava ativa"
+    status_already_active_plural = "já estavam ativas"
+    status_already_inactive_singular = "já estava inativa"
+    status_already_inactive_plural = "já estavam inativas"
+    status_blocked_inactive_singular = "não pôde ser inativada por produtos ativos vinculados"
+    status_blocked_inactive_plural = "não puderam ser inativadas por produtos ativos vinculados"
     list_display = ["name", "organization", "active_products_count", "is_active"]
     list_display_links = ["name"]
     list_editable = ["is_active"]
@@ -99,7 +203,20 @@ class CategoryAdmin(SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, Model
 
 
 @admin.register(Unit)
-class UnitAdmin(SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelAdmin):
+class UnitAdmin(CatalogStatusActionsMixin, SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelAdmin):
+    status_noun_singular = "unidade"
+    status_noun_plural = "unidades"
+    status_noun_gender = "feminine"
+    status_activated_singular = "ativada"
+    status_activated_plural = "ativadas"
+    status_inactivated_singular = "inativada"
+    status_inactivated_plural = "inativadas"
+    status_already_active_singular = "já estava ativa"
+    status_already_active_plural = "já estavam ativas"
+    status_already_inactive_singular = "já estava inativa"
+    status_already_inactive_plural = "já estavam inativas"
+    status_blocked_inactive_singular = "não pôde ser inativada por produtos ativos vinculados"
+    status_blocked_inactive_plural = "não puderam ser inativadas por produtos ativos vinculados"
     list_display = ["symbol", "name", "organization", "active_products_count", "is_active"]
     list_display_links = ["symbol", "name"]
     list_editable = ["is_active"]
@@ -197,12 +314,6 @@ class ProductAdmin(SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelA
             self.message_user(request, f"{product_count_message(updated, 'ativado', 'ativados')}. {'; '.join(details)}.", level=messages.WARNING)
             return
         self.message_user(request, f"{product_count_message(updated, 'ativado', 'ativados')} com sucesso.")
-
-    def get_action_choices(self, request, default_choices=None):
-        choices = super().get_action_choices(request, default_choices)
-        if choices:
-            choices[0] = ("", "Selecionar ação")
-        return choices
 
     def get_form(self, request, obj=None, change=False, **kwargs):
         form_class = super().get_form(request, obj, change, **kwargs)
