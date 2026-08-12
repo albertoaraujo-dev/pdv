@@ -151,7 +151,7 @@ REST_FRAMEWORK = {
 }
 
 UNFOLD = {
-    "SITE_TITLE": "PDV Final Admin",
+    "SITE_TITLE": "PDV Final",
     "SITE_HEADER": "PDV Final",
     "SITE_SUBHEADER": "Gestão da plataforma",
     "SITE_SYMBOL": "storefront",
