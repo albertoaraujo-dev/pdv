@@ -105,6 +105,7 @@ class CatalogStatusActionsMixin:
 
     def no_selected_message(self, status):
         if self.status_noun_gender == "feminine":
+            status = {"ativo": "ativa", "inativo": "inativa"}.get(status, status)
             return f"Nenhuma {self.status_noun_singular} {status} foi selecionada."
         return f"Nenhum {self.status_noun_singular} {status} foi selecionado."
 

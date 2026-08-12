@@ -344,6 +344,15 @@ class CatalogAdminScopeTests(TestCase):
 
         self.assertEqual(choices[0], ("", "Selecionar ação"))
 
+    def test_catalog_status_actions_use_gender_agreement(self):
+        category_admin = CategoryAdmin(Category, admin.site)
+        status_actions = CatalogStatusActionsMixin()
+        status_actions.status_noun_singular = "produto"
+
+        self.assertEqual(category_admin.no_selected_message("inativo"), "Nenhuma categoria inativa foi selecionada.")
+        self.assertEqual(category_admin.no_selected_message("ativo"), "Nenhuma categoria ativa foi selecionada.")
+        self.assertEqual(status_actions.no_selected_message("inativo"), "Nenhum produto inativo foi selecionado.")
+
     def test_manager_catalog_actions_hide_bulk_delete(self):
         category_admin = CategoryAdmin(Category, admin.site)
         product_admin = ProductAdmin(Product, admin.site)

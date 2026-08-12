@@ -30,12 +30,12 @@
                 {% if actions_selection_counter %}
                     <div class="flex grow flex-col sm:flex-row sm:items-center">
                         <span class="action-counter" data-actions-icnt="{{ cl.result_list|length }}">
-                            {{ selection_note }}
+                            0 de {{ cl.result_list|length }} selecionado(s)
                         </span>
 
                         {% if cl.result_count != cl.result_list|length %}
                             <span class="all hidden">
-                                {{ selection_note_all }}
+                                Todos os {{ cl.result_count }} selecionado(s)
                             </span>
 
                             {% if not cl.model_admin.list_disable_select_all %}
