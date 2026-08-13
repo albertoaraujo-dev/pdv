@@ -209,6 +209,11 @@ class TenantAdminScopeTests(TestCase):
 
         self.assertEqual(list(queryset), [self.operator_user])
 
+    def test_user_admin_searches_by_identity_fields(self):
+        model_admin = UserAdmin(get_user_model(), admin.site)
+
+        self.assertEqual(model_admin.search_fields, ["username", "first_name", "last_name", "email"])
+
     def test_manager_sees_user_menu_when_has_subordinates(self):
         model_admin = UserAdmin(get_user_model(), admin.site)
         request = self.request_for(self.manager)
