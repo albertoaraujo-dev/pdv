@@ -164,6 +164,13 @@ class TenantAdminScopeTests(TestCase):
 
         self.assertEqual(list(queryset), [self.first_store])
 
+    def test_store_admin_searches_by_organization_details(self):
+        model_admin = StoreAdmin(Store, admin.site)
+
+        self.assertIn("organization__name", model_admin.search_fields)
+        self.assertIn("organization__legal_name", model_admin.search_fields)
+        self.assertIn("organization__document", model_admin.search_fields)
+
     def test_manager_gets_access_to_store_created_in_admin(self):
         model_admin = StoreAdmin(Store, admin.site)
         request = self.request_for(self.manager)

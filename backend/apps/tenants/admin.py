@@ -316,7 +316,7 @@ class StoreAdmin(TenantScopedAdminMixin, ModelAdmin):
     list_filter = ["organization", "is_active"]
     list_per_page = 25
     readonly_fields = ["created_at", "updated_at"]
-    search_fields = ["name", "code", "organization__name"]
+    search_fields = ["name", "code", "organization__name", "organization__legal_name", "organization__document"]
 
     def get_fieldsets(self, request, obj=None):
         main_fields = ["name", "code", "is_active"]
