@@ -5,6 +5,7 @@ from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
 from rest_framework.test import APIClient
+from unfold.widgets import UnfoldAdminTextInputWidget
 
 from apps.catalog.admin import BooleanRadioFilter, CatalogStatusActionsMixin, CategoryAdmin, ProductAdmin, SimpleCatalogSaveActionsMixin, TenantCategoryFilter, TenantUnitFilter, UnitAdmin, is_product_relation_autocomplete, product_count_message
 from apps.catalog.models import Category, Product, Unit
@@ -474,9 +475,10 @@ class CatalogAdminScopeTests(TestCase):
         form_class = model_admin.get_form(self.request_for(self.manager), obj=None)
         form = form_class()
 
-        self.assertIsInstance(form.fields["price"].widget, forms.TextInput)
+        self.assertIsInstance(form.fields["price"].widget, UnfoldAdminTextInputWidget)
         self.assertEqual(form.fields["price"].widget.attrs["inputmode"], "decimal")
         self.assertEqual(form.fields["price"].widget.attrs["placeholder"], "0,00")
+        self.assertEqual(form.fields["price"].help_text, "Informe o preço de venda, por exemplo 9,90.")
 
     def test_product_admin_uses_help_text_for_technical_codes(self):
         model_admin = ProductAdmin(Product, admin.site)

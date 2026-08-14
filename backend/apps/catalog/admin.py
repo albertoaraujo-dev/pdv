@@ -6,6 +6,7 @@ from django.db.models import Count, Q
 from django.utils.formats import number_format
 from unfold.admin import ModelAdmin
 from unfold.contrib.filters.admin import BooleanRadioFilter, DropdownFilter
+from unfold.widgets import UnfoldAdminTextInputWidget
 
 from apps.tenants.admin import TenantScopedAdminMixin, get_user_organization
 
@@ -331,12 +332,13 @@ class ProductAdmin(SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelA
             def __init__(self, *args, **form_kwargs):
                 super().__init__(*args, **form_kwargs)
                 if "price" in self.fields:
-                    self.fields["price"].widget = forms.TextInput(
+                    self.fields["price"].widget = UnfoldAdminTextInputWidget(
                         attrs={
                             "inputmode": "decimal",
                             "placeholder": "0,00",
                         }
                     )
+                    self.fields["price"].help_text = "Informe o preço de venda, por exemplo 9,90."
                 if "sku" in self.fields:
                     self.fields["sku"].help_text = "Código interno único do produto nesta organização."
                 if "barcode" in self.fields:
