@@ -39,7 +39,17 @@ type CartItem = {
 type Sale = {
   id: number
   total_amount: string
+  payment_method: string
+  amount_received: string
+  change_amount: string
 }
+
+const paymentMethods = [
+  { value: 'cash', label: 'Dinheiro' },
+  { value: 'card_external', label: 'Cartão externo' },
+  { value: 'pix_manual', label: 'Pix manual' },
+  { value: 'other', label: 'Outro' }
+]
 
 const { data: user, pending: isLoadingUser } = await useFetch<AuthUser>(`${apiBase}/api/auth/me/`, {
   credentials: 'include',
@@ -52,6 +62,8 @@ const search = ref('')
 const productQuery = ref('')
 const cartItems = ref<CartItem[]>([])
 const selectedStoreId = ref<number | null>(null)
+const paymentMethod = ref('cash')
+const amountReceived = ref('')
 const saleError = ref('')
 const saleSuccess = ref('')
 const displayName = computed(() => user.value?.name || user.value?.username || 'Usuário')
@@ -59,7 +71,11 @@ const storeNames = computed(() => user.value?.stores.map((store) => `${store.cod
 const selectedStore = computed(() => user.value?.stores.find((store) => store.id === selectedStoreId.value))
 const cartTotal = computed(() => cartItems.value.reduce((total, item) => total + Number(item.product.price) * item.quantity, 0))
 const cartItemCount = computed(() => cartItems.value.reduce((total, item) => total + item.quantity, 0))
-const canCloseSale = computed(() => Boolean(selectedStoreId.value && cartItems.value.length && !isClosingSale.value))
+const amountReceivedNumber = computed(() => Number(String(amountReceived.value).replace(',', '.')) || 0)
+const amountToSend = computed(() => paymentMethod.value === 'cash' ? amountReceivedNumber.value : cartTotal.value)
+const changeAmount = computed(() => Math.max(amountReceivedNumber.value - cartTotal.value, 0))
+const hasEnoughPayment = computed(() => amountToSend.value >= cartTotal.value)
+const canCloseSale = computed(() => Boolean(selectedStoreId.value && cartItems.value.length && hasEnoughPayment.value && !isClosingSale.value))
 const productUrl = computed(() => {
   const params = new URLSearchParams()
   if (productQuery.value) {
@@ -95,6 +111,24 @@ watch(search, (value) => {
   searchTimeout = setTimeout(() => {
     productQuery.value = value.trim()
   }, 250)
+})
+
+watch(cartTotal, (value) => {
+  if (!value) {
+    amountReceived.value = ''
+    return
+  }
+  if (paymentMethod.value !== 'cash' || !amountReceived.value) {
+    amountReceived.value = value.toFixed(2)
+  }
+})
+
+watch(paymentMethod, (value) => {
+  saleError.value = ''
+  saleSuccess.value = ''
+  if (value !== 'cash') {
+    amountReceived.value = cartTotal.value ? cartTotal.value.toFixed(2) : ''
+  }
 })
 
 async function logout() {
@@ -179,6 +213,10 @@ async function closeSale() {
     saleError.value = 'Adicione pelo menos um item ao carrinho.'
     return
   }
+  if (!hasEnoughPayment.value) {
+    saleError.value = 'O valor recebido não pode ser menor que o total da venda.'
+    return
+  }
 
   isClosingSale.value = true
 
@@ -194,6 +232,8 @@ async function closeSale() {
       },
       body: {
         store: selectedStoreId.value,
+        payment_method: paymentMethod.value,
+        amount_received: amountToSend.value.toFixed(2),
         items: cartItems.value.map((item) => ({
           product: item.product.id,
           quantity: item.quantity.toFixed(3)
@@ -202,7 +242,10 @@ async function closeSale() {
     })
 
     cartItems.value = []
-    saleSuccess.value = `Venda #${sale.id} finalizada em ${money(sale.total_amount)}.`
+    amountReceived.value = ''
+    saleSuccess.value = sale.change_amount !== '0.00'
+      ? `Venda #${sale.id} finalizada em ${money(sale.total_amount)}. Troco: ${money(sale.change_amount)}.`
+      : `Venda #${sale.id} finalizada em ${money(sale.total_amount)}.`
     await refreshProducts()
   } catch (error) {
     saleError.value = getFetchErrorMessage(error)
@@ -321,6 +364,27 @@ function money(value: number | string) {
       <div class="cart-total">
         <span>{{ cartItemCount }} item(ns)</span>
         <strong>{{ money(cartTotal) }}</strong>
+      </div>
+
+      <div class="payment-box">
+        <label class="store-field">
+          Forma de pagamento
+          <select v-model="paymentMethod">
+            <option v-for="method in paymentMethods" :key="method.value" :value="method.value">
+              {{ method.label }}
+            </option>
+          </select>
+        </label>
+
+        <label class="store-field">
+          Valor recebido
+          <input v-model="amountReceived" :disabled="paymentMethod !== 'cash'" inputmode="decimal" placeholder="0,00">
+        </label>
+
+        <div v-if="paymentMethod === 'cash'" class="change-row">
+          <span>Troco</span>
+          <strong>{{ money(changeAmount) }}</strong>
+        </div>
       </div>
 
       <p v-if="isClient && selectedStore" class="muted">Loja da venda: {{ selectedStore.code }} - {{ selectedStore.name }}</p>
@@ -569,6 +633,24 @@ select {
 
 .cart-list small {
   color: #64748b;
+}
+
+.payment-box {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.change-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: #0f172a;
+  font-weight: 900;
 }
 
 .quantity-actions button {

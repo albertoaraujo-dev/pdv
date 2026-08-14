@@ -13,11 +13,20 @@ class Sale(models.Model):
         COMPLETED = "completed", "Concluída"
         CANCELLED = "cancelled", "Cancelada"
 
+    class PaymentMethod(models.TextChoices):
+        CASH = "cash", "Dinheiro"
+        CARD_EXTERNAL = "card_external", "Cartão externo"
+        PIX_MANUAL = "pix_manual", "Pix manual"
+        OTHER = "other", "Outro"
+
     organization = models.ForeignKey(Organization, on_delete=models.PROTECT, related_name="sales", verbose_name="organização")
     store = models.ForeignKey(Store, on_delete=models.PROTECT, related_name="sales", verbose_name="loja")
     cashier = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="sales", verbose_name="operador")
     status = models.CharField("status", max_length=24, choices=Status.choices, default=Status.COMPLETED)
     total_amount = models.DecimalField("total", max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    payment_method = models.CharField("forma de pagamento", max_length=24, choices=PaymentMethod.choices, default=PaymentMethod.CASH)
+    amount_received = models.DecimalField("valor recebido", max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    change_amount = models.DecimalField("troco", max_digits=12, decimal_places=2, default=Decimal("0.00"))
     created_at = models.DateTimeField("criado em", auto_now_add=True)
     updated_at = models.DateTimeField("atualizado em", auto_now=True)
 

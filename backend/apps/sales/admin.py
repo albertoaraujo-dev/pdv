@@ -18,9 +18,9 @@ class SaleItemInline(TabularInline):
 
 @admin.register(Sale)
 class SaleAdmin(ModelAdmin):
-    list_display = ["id", "store", "cashier", "status", "total_amount", "created_at"]
-    list_filter = ["status", "store", "created_at"]
-    readonly_fields = ["organization", "store", "cashier", "status", "total_amount", "created_at", "updated_at"]
+    list_display = ["id", "store", "cashier", "status", "payment_method", "total_amount", "amount_received", "change_amount", "created_at"]
+    list_filter = ["status", "payment_method", "store", "created_at"]
+    readonly_fields = ["organization", "store", "cashier", "status", "payment_method", "total_amount", "amount_received", "change_amount", "created_at", "updated_at"]
     search_fields = ["id", "store__name", "cashier__username"]
     inlines = [SaleItemInline]
 

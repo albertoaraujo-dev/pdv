@@ -48,6 +48,8 @@ class SalesApiTests(TestCase):
             reverse("sale-list"),
             {
                 "store": self.first_store.id,
+                "payment_method": Sale.PaymentMethod.CASH,
+                "amount_received": "20.00",
                 "items": [
                     {"product": self.product.id, "quantity": "2.000"},
                     {"product": self.other_product.id, "quantity": "1.000"},
@@ -63,15 +65,61 @@ class SalesApiTests(TestCase):
         self.assertEqual(sale.cashier, self.operator)
         self.assertEqual(sale.status, Sale.Status.COMPLETED)
         self.assertEqual(sale.total_amount, Decimal("12.00"))
+        self.assertEqual(sale.payment_method, Sale.PaymentMethod.CASH)
+        self.assertEqual(sale.amount_received, Decimal("20.00"))
+        self.assertEqual(sale.change_amount, Decimal("8.00"))
         self.assertEqual(SaleItem.objects.count(), 2)
         self.assertEqual(response.json()["total_amount"], "12.00")
+        self.assertEqual(response.json()["change_amount"], "8.00")
+
+    def test_non_cash_sale_has_no_change(self):
+        self.client.force_authenticate(self.operator)
+
+        response = self.client.post(
+            reverse("sale-list"),
+            {
+                "store": self.first_store.id,
+                "payment_method": Sale.PaymentMethod.PIX_MANUAL,
+                "amount_received": "3.50",
+                "items": [{"product": self.product.id, "quantity": "1.000"}],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        sale = Sale.objects.get()
+        self.assertEqual(sale.payment_method, Sale.PaymentMethod.PIX_MANUAL)
+        self.assertEqual(sale.amount_received, Decimal("3.50"))
+        self.assertEqual(sale.change_amount, Decimal("0.00"))
+
+    def test_sale_rejects_amount_received_lower_than_total(self):
+        self.client.force_authenticate(self.operator)
+
+        response = self.client.post(
+            reverse("sale-list"),
+            {
+                "store": self.first_store.id,
+                "payment_method": Sale.PaymentMethod.CASH,
+                "amount_received": "3.00",
+                "items": [{"product": self.product.id, "quantity": "1.000"}],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["errors"]["amount_received"], ["O valor recebido não pode ser menor que o total da venda."])
+        self.assertFalse(Sale.objects.exists())
 
     def test_sale_copies_product_price_and_identity(self):
         self.client.force_authenticate(self.operator)
         self.product.price = Decimal("4.00")
         self.product.save(update_fields=["price"])
 
-        response = self.client.post(reverse("sale-list"), {"store": self.first_store.id, "items": [{"product": self.product.id, "quantity": "3.000"}]}, format="json")
+        response = self.client.post(
+            reverse("sale-list"),
+            {"store": self.first_store.id, "payment_method": Sale.PaymentMethod.CASH, "amount_received": "12.00", "items": [{"product": self.product.id, "quantity": "3.000"}]},
+            format="json",
+        )
 
         self.assertEqual(response.status_code, 201, response.json())
         item = SaleItem.objects.get()
@@ -83,7 +131,7 @@ class SalesApiTests(TestCase):
     def test_sale_rejects_store_outside_allowed_scope(self):
         self.client.force_authenticate(self.operator)
 
-        response = self.client.post(reverse("sale-list"), {"store": self.second_store.id, "items": [{"product": self.product.id, "quantity": "1.000"}]}, format="json")
+        response = self.client.post(reverse("sale-list"), {"store": self.second_store.id, "payment_method": Sale.PaymentMethod.CASH, "amount_received": "3.50", "items": [{"product": self.product.id, "quantity": "1.000"}]}, format="json")
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["errors"]["store"], ["Loja não permitida para este usuário."])
@@ -92,7 +140,7 @@ class SalesApiTests(TestCase):
     def test_sale_rejects_product_from_other_organization(self):
         self.client.force_authenticate(self.operator)
 
-        response = self.client.post(reverse("sale-list"), {"store": self.first_store.id, "items": [{"product": self.second_product.id, "quantity": "1.000"}]}, format="json")
+        response = self.client.post(reverse("sale-list"), {"store": self.first_store.id, "payment_method": Sale.PaymentMethod.CASH, "amount_received": "12.00", "items": [{"product": self.second_product.id, "quantity": "1.000"}]}, format="json")
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["errors"]["items"], ["Todos os produtos precisam pertencer à organização da loja."])
@@ -101,7 +149,7 @@ class SalesApiTests(TestCase):
     def test_sale_rejects_inactive_product(self):
         self.client.force_authenticate(self.operator)
 
-        response = self.client.post(reverse("sale-list"), {"store": self.first_store.id, "items": [{"product": self.inactive_product.id, "quantity": "1.000"}]}, format="json")
+        response = self.client.post(reverse("sale-list"), {"store": self.first_store.id, "payment_method": Sale.PaymentMethod.CASH, "amount_received": "2.00", "items": [{"product": self.inactive_product.id, "quantity": "1.000"}]}, format="json")
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["errors"]["items"], ["Produto inativo: Antigo."])
@@ -110,7 +158,7 @@ class SalesApiTests(TestCase):
     def test_sale_rejects_empty_items(self):
         self.client.force_authenticate(self.operator)
 
-        response = self.client.post(reverse("sale-list"), {"store": self.first_store.id, "items": []}, format="json")
+        response = self.client.post(reverse("sale-list"), {"store": self.first_store.id, "payment_method": Sale.PaymentMethod.CASH, "amount_received": "0.00", "items": []}, format="json")
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["errors"]["items"], ["Adicione pelo menos um item à venda."])
@@ -118,7 +166,7 @@ class SalesApiTests(TestCase):
     def test_sale_rejects_non_positive_quantity(self):
         self.client.force_authenticate(self.operator)
 
-        response = self.client.post(reverse("sale-list"), {"store": self.first_store.id, "items": [{"product": self.product.id, "quantity": "0.000"}]}, format="json")
+        response = self.client.post(reverse("sale-list"), {"store": self.first_store.id, "payment_method": Sale.PaymentMethod.CASH, "amount_received": "0.00", "items": [{"product": self.product.id, "quantity": "0.000"}]}, format="json")
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["errors"]["items"][0]["quantity"], ["A quantidade precisa ser maior que zero."])

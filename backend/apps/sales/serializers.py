@@ -33,16 +33,35 @@ class SaleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Sale
-        fields = ["id", "organization", "store", "cashier", "status", "total_amount", "items", "created_at"]
-        read_only_fields = ["organization", "cashier", "status", "total_amount", "created_at"]
+        fields = [
+            "id",
+            "organization",
+            "store",
+            "cashier",
+            "status",
+            "total_amount",
+            "payment_method",
+            "amount_received",
+            "change_amount",
+            "items",
+            "created_at",
+        ]
+        read_only_fields = ["organization", "cashier", "status", "total_amount", "amount_received", "change_amount", "created_at"]
 
 
 class SaleCreateSerializer(serializers.ModelSerializer):
     items = SaleItemInputSerializer(many=True, write_only=True)
+    amount_received = serializers.DecimalField(max_digits=12, decimal_places=2)
 
     class Meta:
         model = Sale
-        fields = ["id", "store", "items"]
+        fields = ["id", "store", "payment_method", "amount_received", "items"]
+
+    def calculate_total(self, items):
+        total = Decimal("0.00")
+        for item in items:
+            total += (item["quantity"] * item["product"].price).quantize(MONEY_QUANT)
+        return total.quantize(MONEY_QUANT)
 
     def validate(self, attrs):
         request = self.context["request"]
@@ -61,6 +80,12 @@ class SaleCreateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"items": "Todos os produtos precisam pertencer à organização da loja."})
             if not product.is_active:
                 raise serializers.ValidationError({"items": f"Produto inativo: {product.name}."})
+        total = self.calculate_total(items)
+        amount_received = attrs["amount_received"].quantize(MONEY_QUANT)
+        if amount_received < total:
+            raise serializers.ValidationError({"amount_received": "O valor recebido não pode ser menor que o total da venda."})
+        attrs["amount_received"] = amount_received
+        attrs["_calculated_total"] = total
         return attrs
 
     @transaction.atomic
@@ -68,18 +93,22 @@ class SaleCreateSerializer(serializers.ModelSerializer):
         request = self.context["request"]
         store = validated_data["store"]
         items_data = validated_data.pop("items")
+        total = validated_data.pop("_calculated_total")
+        amount_received = validated_data["amount_received"]
+        payment_method = validated_data.get("payment_method", Sale.PaymentMethod.CASH)
         sale = Sale.objects.create(
             organization=store.organization,
             store=store,
             cashier=request.user,
             status=Sale.Status.COMPLETED,
+            payment_method=payment_method,
+            amount_received=amount_received,
+            change_amount=(amount_received - total).quantize(MONEY_QUANT) if payment_method == Sale.PaymentMethod.CASH else Decimal("0.00"),
         )
-        total = Decimal("0.00")
         for item_data in items_data:
             product = item_data["product"]
             quantity = item_data["quantity"]
             line_total = (quantity * product.price).quantize(MONEY_QUANT)
-            total += line_total
             SaleItem.objects.create(
                 sale=sale,
                 product=product,
@@ -89,7 +118,7 @@ class SaleCreateSerializer(serializers.ModelSerializer):
                 unit_price=product.price,
                 line_total=line_total,
             )
-        sale.total_amount = total.quantize(MONEY_QUANT)
+        sale.total_amount = total
         sale.save(update_fields=["total_amount", "updated_at"])
         return sale
 
