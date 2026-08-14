@@ -143,6 +143,7 @@ class UserAdmin(DjangoUserAdmin, ModelAdmin):
     add_form = ManagedUserCreationForm
     change_form_show_cancel_button = True
     list_display = ["username", "first_name", "last_name", "email", "is_active"]
+    list_editable = ["is_active"]
     list_per_page = 25
     search_fields = ["username", "first_name", "last_name", "email"]
 
