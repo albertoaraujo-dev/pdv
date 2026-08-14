@@ -214,7 +214,7 @@ function decrementItem(productId: number) {
     return
   }
   if (item.quantity === 1) {
-    cartItems.value = cartItems.value.filter((cartItem) => cartItem.product.id !== productId)
+    saleError.value = 'A quantidade mínima é 1. Use Remover para excluir o item.'
     return
   }
   item.quantity -= 1
@@ -225,6 +225,25 @@ function removeItem(productId: number) {
   saleSuccess.value = ''
   lastSale.value = null
   cartItems.value = cartItems.value.filter((cartItem) => cartItem.product.id !== productId)
+}
+
+function updateItemQuantity(productId: number, value: string | number, input?: HTMLInputElement) {
+  saleError.value = ''
+  saleSuccess.value = ''
+  lastSale.value = null
+  const quantity = Number.parseInt(String(value), 10)
+  const item = cartItems.value.find((cartItem) => cartItem.product.id === productId)
+  if (!item) {
+    return
+  }
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    saleError.value = 'Quantidade não pode ser zero.'
+    if (input) {
+      input.value = String(item.quantity)
+    }
+    return
+  }
+  item.quantity = quantity
 }
 
 function getPaymentMethodLabel(value: string) {
@@ -406,7 +425,7 @@ function money(value: number | string) {
             </div>
             <div class="quantity-actions">
               <button type="button" @click="decrementItem(item.product.id)">-</button>
-              <span>{{ item.quantity }}</span>
+              <input class="quantity-input" type="number" min="1" step="1" :value="item.quantity" inputmode="numeric" aria-label="Quantidade" @change="updateItemQuantity(item.product.id, ($event.target as HTMLInputElement).value, $event.target as HTMLInputElement)">
               <button type="button" @click="addToCart(item.product)">+</button>
               <button type="button" @click="removeItem(item.product.id)">Remover</button>
             </div>
@@ -794,6 +813,13 @@ select {
 
 .quantity-actions button {
   margin-top: 0;
+}
+
+.quantity-input {
+  width: 72px;
+  padding: 9px 10px;
+  text-align: center;
+  font-weight: 800;
 }
 
 .cart-total {
