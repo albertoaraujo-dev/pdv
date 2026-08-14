@@ -478,6 +478,14 @@ class CatalogAdminScopeTests(TestCase):
         self.assertEqual(form.fields["price"].widget.attrs["inputmode"], "decimal")
         self.assertEqual(form.fields["price"].widget.attrs["placeholder"], "0,00")
 
+    def test_product_admin_uses_help_text_for_technical_codes(self):
+        model_admin = ProductAdmin(Product, admin.site)
+        form_class = model_admin.get_form(self.request_for(self.manager), obj=None)
+        form = form_class()
+
+        self.assertEqual(form.fields["sku"].help_text, "Código interno único do produto nesta organização.")
+        self.assertEqual(form.fields["barcode"].help_text, "Opcional. Use o código lido pelo leitor de código de barras.")
+
     def test_product_admin_list_formats_price_as_money(self):
         model_admin = ProductAdmin(Product, admin.site)
 

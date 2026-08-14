@@ -337,6 +337,10 @@ class ProductAdmin(SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelA
                             "placeholder": "0,00",
                         }
                     )
+                if "sku" in self.fields:
+                    self.fields["sku"].help_text = "Código interno único do produto nesta organização."
+                if "barcode" in self.fields:
+                    self.fields["barcode"].help_text = "Opcional. Use o código lido pelo leitor de código de barras."
                 if organization and "category" in self.fields:
                     category_filter = Q(is_active=True)
                     if self.instance and self.instance.category_id:
