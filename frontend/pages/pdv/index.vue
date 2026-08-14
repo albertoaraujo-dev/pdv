@@ -316,65 +316,66 @@ function money(value: number | string) {
       </label>
     </section>
 
-    <section class="products-card">
-      <div class="products-heading">
-        <div>
-          <p class="eyebrow">Catálogo</p>
-          <h2>Produtos disponíveis</h2>
+    <div class="pos-workspace">
+      <section class="products-card">
+        <div class="products-heading">
+          <div>
+            <p class="eyebrow">Catálogo</p>
+            <h2>Produtos disponíveis</h2>
+          </div>
+          <button type="button" :disabled="!isClient || isLoadingProducts" @click="refreshProducts">
+            Atualizar
+          </button>
         </div>
-        <button type="button" :disabled="!isClient || isLoadingProducts" @click="refreshProducts">
-          Atualizar
-        </button>
-      </div>
 
-      <label class="search-field">
-        Buscar por nome, SKU ou código de barras
-        <input v-model="search" type="search" placeholder="Ex.: água, SKU ou código">
-      </label>
+        <label class="search-field">
+          Buscar por nome, SKU ou código de barras
+          <input v-model="search" type="search" placeholder="Ex.: água, SKU ou código">
+        </label>
 
-      <p v-if="!isClient || isLoadingUser || isLoadingProducts" class="muted">Carregando produtos...</p>
-      <p v-else-if="!products?.results.length" class="muted">Nenhum produto encontrado.</p>
+        <p v-if="!isClient || isLoadingUser || isLoadingProducts" class="muted">Carregando produtos...</p>
+        <p v-else-if="!products?.results.length" class="muted">Nenhum produto encontrado.</p>
 
-      <ul v-else class="product-list">
-        <li v-for="product in products.results" :key="product.id">
-          <div>
-            <strong>{{ product.name }}</strong>
-            <small><span v-if="product.sku">SKU {{ product.sku }} · </span>{{ product.category.name }} · {{ product.unit.symbol }}</small>
-          </div>
-          <div class="product-actions">
-            <span>{{ money(product.price) }}</span>
-            <button type="button" @click="addToCart(product)">
-              Adicionar
-            </button>
-          </div>
-        </li>
-      </ul>
+        <ul v-else class="product-list">
+          <li v-for="product in products.results" :key="product.id">
+            <div>
+              <strong>{{ product.name }}</strong>
+              <small><span v-if="product.sku">SKU {{ product.sku }} · </span>{{ product.category.name }} · {{ product.unit.symbol }}</small>
+            </div>
+            <div class="product-actions">
+              <span>{{ money(product.price) }}</span>
+              <button type="button" @click="addToCart(product)">
+                Adicionar
+              </button>
+            </div>
+          </li>
+        </ul>
 
-      <small v-if="isClient && products" class="muted">{{ products.count }} produto(s) encontrado(s)</small>
-    </section>
+        <small v-if="isClient && products" class="muted">{{ products.count }} produto(s) encontrado(s)</small>
+      </section>
 
-    <aside class="cart-card">
-      <div>
-        <p class="eyebrow">Carrinho</p>
-        <h2>Venda atual</h2>
-      </div>
+      <aside class="cart-card">
+        <div>
+          <p class="eyebrow">Carrinho</p>
+          <h2>Venda atual</h2>
+        </div>
 
-      <p v-if="!cartItems.length" class="muted">Nenhum item adicionado.</p>
+        <p v-if="!cartItems.length" class="muted">Nenhum item adicionado.</p>
 
-      <ul v-else class="cart-list">
-        <li v-for="item in cartItems" :key="item.product.id">
-          <div>
-            <strong>{{ item.product.name }}</strong>
-            <small>{{ item.quantity }} x {{ money(item.product.price) }}</small>
-          </div>
-          <div class="quantity-actions">
-            <button type="button" @click="decrementItem(item.product.id)">-</button>
-            <span>{{ item.quantity }}</span>
-            <button type="button" @click="addToCart(item.product)">+</button>
-            <button type="button" @click="removeItem(item.product.id)">Remover</button>
-          </div>
-        </li>
-      </ul>
+        <ul v-else class="cart-list">
+          <li v-for="item in cartItems" :key="item.product.id">
+            <div>
+              <strong>{{ item.product.name }}</strong>
+              <small>{{ item.quantity }} x {{ money(item.product.price) }}</small>
+            </div>
+            <div class="quantity-actions">
+              <button type="button" @click="decrementItem(item.product.id)">-</button>
+              <span>{{ item.quantity }}</span>
+              <button type="button" @click="addToCart(item.product)">+</button>
+              <button type="button" @click="removeItem(item.product.id)">Remover</button>
+            </div>
+          </li>
+        </ul>
 
       <div class="cart-total">
         <span>{{ cartItemCount }} item(ns)</span>
@@ -442,7 +443,8 @@ function money(value: number | string) {
           </div>
         </dl>
       </section>
-    </aside>
+      </aside>
+    </div>
   </main>
 </template>
 
@@ -533,16 +535,20 @@ button.button-loading:disabled {
   padding: 24px;
 }
 
+.pos-workspace {
+  display: grid;
+  grid-template-columns: 1fr;
+  align-items: start;
+  gap: 24px;
+}
+
 .products-card {
-  max-width: 960px;
   display: grid;
   gap: 18px;
-  margin-bottom: 24px;
   padding: 24px;
 }
 
 .cart-card {
-  max-width: 960px;
   display: grid;
   gap: 18px;
   padding: 24px;
@@ -778,6 +784,21 @@ dd {
   font-weight: 800;
 }
 
+@media (min-width: 1100px) {
+  .status-card {
+    max-width: 820px;
+  }
+
+  .pos-workspace {
+    grid-template-columns: minmax(0, 1fr) minmax(380px, 460px);
+  }
+
+  .cart-card {
+    position: sticky;
+    top: 24px;
+  }
+}
+
 @media (max-width: 720px) {
   .pos-shell {
     padding: 20px;
@@ -786,5 +807,6 @@ dd {
   .pos-header {
     display: grid;
   }
+
 }
 </style>
