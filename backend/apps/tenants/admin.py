@@ -6,6 +6,7 @@ from django.contrib.auth.forms import UserCreationForm
 from django import forms
 from django.db.models import Count, Q
 from unfold.admin import ModelAdmin
+from unfold.widgets import UnfoldAdminPasswordWidget
 
 from apps.accounts.models import AuthEvent, record_auth_event
 from apps.accounts.policies import (
@@ -55,6 +56,8 @@ class ManagedUserCreationForm(UserCreationForm):
     def __init__(self, *args, **kwargs):
         request = kwargs.pop("request", None)
         super().__init__(*args, **kwargs)
+        self.fields["password1"].widget = UnfoldAdminPasswordWidget(attrs={"autocomplete": "new-password"})
+        self.fields["password2"].widget = UnfoldAdminPasswordWidget(attrs={"autocomplete": "new-password"})
         self.fields["role"].choices = [choice for choice in UserProfile.Role.choices if choice[0] in SUBORDINATE_ROLES]
         if request:
             self.fields["stores"].queryset = get_allowed_stores(request.user)
@@ -165,12 +168,12 @@ class UserAdmin(DjangoUserAdmin, ModelAdmin):
             return super().get_fieldsets(request, obj)
         if obj is None:
             return (
-                (None, {"fields": ("username", "password1", "password2")}),
+                ("Credenciais", {"fields": ("username", "password1", "password2")}),
                 ("Informações pessoais", {"fields": ("first_name", "last_name", "email")}),
                 ("Acesso operacional", {"fields": ("role", "stores")}),
             )
         return (
-            (None, {"fields": ("username", "password")}),
+            ("Credenciais", {"fields": ("username", "password")}),
             ("Informações pessoais", {"fields": ("first_name", "last_name", "email")}),
             ("Status", {"fields": ("is_active",)}),
             ("Datas importantes", {"fields": ("last_login", "date_joined")}),

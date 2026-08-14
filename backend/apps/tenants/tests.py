@@ -5,6 +5,7 @@ from django.test import RequestFactory
 from django.test import TestCase
 from django.urls import reverse
 from rest_framework.test import APIClient
+from unfold.widgets import UnfoldAdminPasswordWidget
 
 from .admin import OrganizationAdmin, StoreAdmin, UserAdmin, UserProfileAdmin, UserStoreAccessAdmin
 from .models import Organization, Store, UserProfile, UserStoreAccess
@@ -270,9 +271,20 @@ class TenantAdminScopeTests(TestCase):
         form = form_class()
         role_choices = dict(form.fields["role"].choices)
 
+        self.assertIn(("Credenciais", {"fields": ("username", "password1", "password2")}), fieldsets)
         self.assertIn(("Acesso operacional", {"fields": ("role", "stores")}), fieldsets)
+        self.assertIsInstance(form.fields["password1"].widget, UnfoldAdminPasswordWidget)
+        self.assertIsInstance(form.fields["password2"].widget, UnfoldAdminPasswordWidget)
+        self.assertEqual(form.fields["password1"].widget.attrs["autocomplete"], "new-password")
+        self.assertEqual(form.fields["password2"].widget.attrs["autocomplete"], "new-password")
         self.assertEqual(set(role_choices), {UserProfile.Role.OPERATOR, UserProfile.Role.CASHIER, UserProfile.Role.FISCAL})
         self.assertEqual(list(form.fields["stores"].queryset), [self.first_store])
+
+    def test_manager_user_edit_form_uses_credentials_section(self):
+        model_admin = UserAdmin(get_user_model(), admin.site)
+        fieldsets = model_admin.get_fieldsets(self.request_for(self.manager), obj=self.operator_user)
+
+        self.assertIn(("Credenciais", {"fields": ("username", "password")}), fieldsets)
 
     def test_manager_created_user_uses_selected_subordinate_role(self):
         class FormStub:
