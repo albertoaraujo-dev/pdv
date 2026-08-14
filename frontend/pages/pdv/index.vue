@@ -2,8 +2,7 @@
 definePageMeta({ middleware: 'pos-auth' })
 
 const config = useRuntimeConfig()
-const apiBase = import.meta.server ? config.apiBaseServer : config.public.apiBase
-const headers = import.meta.server ? useRequestHeaders(['cookie']) : undefined
+const apiBase = config.public.apiBase
 
 type AuthUser = {
   username: string
@@ -37,19 +36,30 @@ type CartItem = {
   quantity: number
 }
 
-const { data: user } = await useFetch<AuthUser>(`${apiBase}/api/auth/me/`, {
+type Sale = {
+  id: number
+  total_amount: string
+}
+
+const { data: user, pending: isLoadingUser } = await useFetch<AuthUser>(`${apiBase}/api/auth/me/`, {
   credentials: 'include',
-  headers
+  server: false
 })
 
 const isLoggingOut = ref(false)
+const isClosingSale = ref(false)
 const search = ref('')
 const productQuery = ref('')
 const cartItems = ref<CartItem[]>([])
+const selectedStoreId = ref<number | null>(null)
+const saleError = ref('')
+const saleSuccess = ref('')
 const displayName = computed(() => user.value?.name || user.value?.username || 'Usuário')
 const storeNames = computed(() => user.value?.stores.map((store) => `${store.code} - ${store.name}`).join(', ') || 'Nenhuma loja ativa')
+const selectedStore = computed(() => user.value?.stores.find((store) => store.id === selectedStoreId.value))
 const cartTotal = computed(() => cartItems.value.reduce((total, item) => total + Number(item.product.price) * item.quantity, 0))
 const cartItemCount = computed(() => cartItems.value.reduce((total, item) => total + item.quantity, 0))
+const canCloseSale = computed(() => Boolean(selectedStoreId.value && cartItems.value.length && !isClosingSale.value))
 const productUrl = computed(() => {
   const params = new URLSearchParams()
   if (productQuery.value) {
@@ -61,11 +71,22 @@ const productUrl = computed(() => {
 
 const { data: products, pending: isLoadingProducts, refresh: refreshProducts } = await useFetch<PaginatedResponse<Product>>(productUrl, {
   credentials: 'include',
-  headers,
+  server: false,
   watch: [productUrl]
 })
 
 let searchTimeout: ReturnType<typeof setTimeout> | undefined
+const isClient = ref(false)
+
+onMounted(() => {
+  isClient.value = true
+})
+
+watch(user, (value) => {
+  if (!selectedStoreId.value && value?.stores.length === 1) {
+    selectedStoreId.value = value.stores[0].id
+  }
+}, { immediate: true })
 
 watch(search, (value) => {
   if (searchTimeout) {
@@ -97,6 +118,8 @@ async function logout() {
 }
 
 function addToCart(product: Product) {
+  saleError.value = ''
+  saleSuccess.value = ''
   const item = cartItems.value.find((cartItem) => cartItem.product.id === product.id)
   if (item) {
     item.quantity += 1
@@ -106,6 +129,8 @@ function addToCart(product: Product) {
 }
 
 function decrementItem(productId: number) {
+  saleError.value = ''
+  saleSuccess.value = ''
   const item = cartItems.value.find((cartItem) => cartItem.product.id === productId)
   if (!item) {
     return
@@ -118,7 +143,72 @@ function decrementItem(productId: number) {
 }
 
 function removeItem(productId: number) {
+  saleError.value = ''
+  saleSuccess.value = ''
   cartItems.value = cartItems.value.filter((cartItem) => cartItem.product.id !== productId)
+}
+
+function getFetchErrorMessage(error: unknown) {
+  if (typeof error === 'object' && error && 'data' in error) {
+    const data = (error as { data?: { detail?: string, errors?: Record<string, string[] | string> } }).data
+    if (data?.detail) {
+      return data.detail
+    }
+    if (data?.errors) {
+      const firstError = Object.values(data.errors)[0]
+      if (Array.isArray(firstError)) {
+        return firstError[0] || 'Não foi possível finalizar a venda.'
+      }
+      if (firstError) {
+        return firstError
+      }
+    }
+  }
+  return 'Não foi possível finalizar a venda.'
+}
+
+async function closeSale() {
+  saleError.value = ''
+  saleSuccess.value = ''
+
+  if (!selectedStoreId.value) {
+    saleError.value = 'Selecione uma loja para finalizar a venda.'
+    return
+  }
+  if (!cartItems.value.length) {
+    saleError.value = 'Adicione pelo menos um item ao carrinho.'
+    return
+  }
+
+  isClosingSale.value = true
+
+  try {
+    const csrf = await $fetch<{ csrfToken: string }>(`${config.public.apiBase}/api/auth/csrf/`, {
+      credentials: 'include'
+    })
+    const sale = await $fetch<Sale>(`${config.public.apiBase}/api/sales/sales/`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'X-CSRFToken': csrf.csrfToken
+      },
+      body: {
+        store: selectedStoreId.value,
+        items: cartItems.value.map((item) => ({
+          product: item.product.id,
+          quantity: item.quantity.toFixed(3)
+        }))
+      }
+    })
+
+    cartItems.value = []
+    saleSuccess.value = `Venda #${sale.id} finalizada em ${money(sale.total_amount)}.`
+    await refreshProducts()
+  } catch (error) {
+    saleError.value = getFetchErrorMessage(error)
+  } finally {
+    isClosingSale.value = false
+  }
 }
 
 function money(value: number | string) {
@@ -134,11 +224,11 @@ function money(value: number | string) {
         <h1>PDV</h1>
       </div>
 
-      <aside v-if="user" class="user-card" aria-label="Usuário logado">
+      <aside v-if="isClient && user" class="user-card" aria-label="Usuário logado">
         <span>Logado como</span>
         <strong>{{ displayName }}</strong>
         <small>{{ user.username }} · {{ user.profile.role_label }}</small>
-        <button type="button" :disabled="isLoggingOut" @click="logout">
+        <button type="button" :class="{ 'button-loading': isLoggingOut }" :disabled="isLoggingOut" @click="logout">
           {{ isLoggingOut ? 'Saindo...' : 'Sair do PDV' }}
         </button>
       </aside>
@@ -146,7 +236,7 @@ function money(value: number | string) {
 
     <section class="status-card">
       <p>Área reservada para o ponto de venda.</p>
-      <dl v-if="user">
+      <dl v-if="isClient && user">
         <div>
           <dt>Organização</dt>
           <dd>{{ user.profile.organization_name }}</dd>
@@ -156,6 +246,16 @@ function money(value: number | string) {
           <dd>{{ storeNames }}</dd>
         </div>
       </dl>
+
+      <label v-if="isClient && user?.stores.length" class="store-field">
+        Loja da venda
+        <select v-model.number="selectedStoreId">
+          <option :value="null" disabled>Selecione uma loja</option>
+          <option v-for="store in user.stores" :key="store.id" :value="store.id">
+            {{ store.code }} - {{ store.name }}
+          </option>
+        </select>
+      </label>
     </section>
 
     <section class="products-card">
@@ -164,7 +264,7 @@ function money(value: number | string) {
           <p class="eyebrow">Catálogo</p>
           <h2>Produtos disponíveis</h2>
         </div>
-        <button type="button" :disabled="isLoadingProducts" @click="refreshProducts">
+        <button type="button" :disabled="!isClient || isLoadingProducts" @click="refreshProducts">
           Atualizar
         </button>
       </div>
@@ -174,14 +274,14 @@ function money(value: number | string) {
         <input v-model="search" type="search" placeholder="Ex.: água, SKU ou código">
       </label>
 
-      <p v-if="isLoadingProducts" class="muted">Carregando produtos...</p>
+      <p v-if="!isClient || isLoadingUser || isLoadingProducts" class="muted">Carregando produtos...</p>
       <p v-else-if="!products?.results.length" class="muted">Nenhum produto encontrado.</p>
 
       <ul v-else class="product-list">
         <li v-for="product in products.results" :key="product.id">
           <div>
             <strong>{{ product.name }}</strong>
-            <small>{{ product.sku }} · {{ product.category.name }} · {{ product.unit.symbol }}</small>
+            <small><span v-if="product.sku">SKU {{ product.sku }} · </span>{{ product.category.name }} · {{ product.unit.symbol }}</small>
           </div>
           <div class="product-actions">
             <span>{{ money(product.price) }}</span>
@@ -192,7 +292,7 @@ function money(value: number | string) {
         </li>
       </ul>
 
-      <small v-if="products" class="muted">{{ products.count }} produto(s) encontrado(s)</small>
+      <small v-if="isClient && products" class="muted">{{ products.count }} produto(s) encontrado(s)</small>
     </section>
 
     <aside class="cart-card">
@@ -222,6 +322,14 @@ function money(value: number | string) {
         <span>{{ cartItemCount }} item(ns)</span>
         <strong>{{ money(cartTotal) }}</strong>
       </div>
+
+      <p v-if="isClient && selectedStore" class="muted">Loja da venda: {{ selectedStore.code }} - {{ selectedStore.name }}</p>
+      <p v-if="saleError" class="sale-message sale-message-error">{{ saleError }}</p>
+      <p v-if="saleSuccess" class="sale-message sale-message-success">{{ saleSuccess }}</p>
+
+      <button type="button" class="close-sale-button" :class="{ 'button-loading': isClosingSale }" :disabled="!canCloseSale" @click="closeSale">
+        {{ isClosingSale ? 'Finalizando...' : 'Finalizar venda' }}
+      </button>
     </aside>
   </main>
 </template>
@@ -299,8 +407,12 @@ button {
 }
 
 button:disabled {
-  cursor: wait;
+  cursor: not-allowed;
   opacity: 0.65;
+}
+
+button.button-loading:disabled {
+  cursor: wait;
 }
 
 .status-card {
@@ -336,20 +448,60 @@ h2 {
   font-size: 1.8rem;
 }
 
-.search-field {
+.search-field,
+.store-field {
   display: grid;
   gap: 8px;
   color: #475569;
   font-weight: 800;
 }
 
-input {
+input,
+select {
   width: 100%;
   box-sizing: border-box;
   padding: 12px 14px;
   border: 1px solid #cbd5e1;
   border-radius: 12px;
   color: #0f172a;
+}
+
+.sale-message {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-weight: 800;
+}
+
+.sale-message-error {
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.sale-message-success {
+  border: 1px solid #bbf7d0;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.close-sale-button {
+  width: 100%;
+  justify-content: center;
+  padding: 14px 18px;
+  background: #0369a1;
+}
+
+.close-sale-button:disabled:not(.button-loading) {
+  cursor: not-allowed !important;
+}
+
+.close-sale-button:disabled {
+  cursor: not-allowed;
+}
+
+.close-sale-button.button-loading:disabled {
+  cursor: wait !important;
 }
 
 .product-list {
@@ -374,6 +526,15 @@ input {
 .product-list small,
 .muted {
   color: #64748b;
+}
+
+.product-list strong,
+.product-list small {
+  display: block;
+}
+
+.product-list strong {
+  margin-bottom: 4px;
 }
 
 .product-actions,
