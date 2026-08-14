@@ -58,6 +58,7 @@ class ManagedUserCreationForm(UserCreationForm):
         super().__init__(*args, **kwargs)
         self.fields["password1"].widget = UnfoldAdminPasswordWidget(attrs={"autocomplete": "new-password"})
         self.fields["password2"].widget = UnfoldAdminPasswordWidget(attrs={"autocomplete": "new-password"})
+        self.fields["stores"].error_messages["required"] = "Selecione pelo menos uma loja permitida."
         self.fields["role"].choices = [choice for choice in UserProfile.Role.choices if choice[0] in SUBORDINATE_ROLES]
         if request:
             self.fields["stores"].queryset = get_allowed_stores(request.user)

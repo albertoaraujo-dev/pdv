@@ -277,6 +277,7 @@ class TenantAdminScopeTests(TestCase):
         self.assertIsInstance(form.fields["password2"].widget, UnfoldAdminPasswordWidget)
         self.assertEqual(form.fields["password1"].widget.attrs["autocomplete"], "new-password")
         self.assertEqual(form.fields["password2"].widget.attrs["autocomplete"], "new-password")
+        self.assertEqual(form.fields["stores"].error_messages["required"], "Selecione pelo menos uma loja permitida.")
         self.assertEqual(set(role_choices), {UserProfile.Role.OPERATOR, UserProfile.Role.CASHIER, UserProfile.Role.FISCAL})
         self.assertEqual(list(form.fields["stores"].queryset), [self.first_store])
 
