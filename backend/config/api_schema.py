@@ -15,6 +15,8 @@ API_PATHS = {
     "/api/catalog/units/{id}/": ["get"],
     "/api/catalog/products/": ["get"],
     "/api/catalog/products/{id}/": ["get"],
+    "/api/sales/sales/": ["get", "post"],
+    "/api/sales/sales/{id}/": ["get"],
     "/api/tenants/organizations/": ["get"],
     "/api/tenants/organizations/{id}/": ["get"],
     "/api/tenants/stores/": ["get"],
