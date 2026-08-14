@@ -219,6 +219,7 @@ class TenantAdminScopeTests(TestCase):
 
         self.assertEqual(model_admin.list_display, ["username", "first_name", "last_name", "email", "is_active"])
         self.assertEqual(model_admin.list_editable, ["is_active"])
+        self.assertEqual(model_admin.list_filter, ["is_active"])
         self.assertNotIn("is_staff", model_admin.list_display)
         self.assertNotIn("is_superuser", model_admin.list_display)
 
