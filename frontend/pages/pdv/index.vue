@@ -74,6 +74,7 @@ const paymentMethod = ref('cash')
 const amountReceived = ref('')
 const saleError = ref('')
 const saleSuccess = ref('')
+const searchMessage = ref('')
 const lastSale = ref<Sale | null>(null)
 const displayName = computed(() => user.value?.name || user.value?.username || 'Usuário')
 const storeNames = computed(() => user.value?.stores.map((store) => `${store.code} - ${store.name}`).join(', ') || 'Nenhuma loja ativa')
@@ -114,6 +115,7 @@ watch(user, (value) => {
 }, { immediate: true })
 
 watch(search, (value) => {
+  searchMessage.value = ''
   if (searchTimeout) {
     clearTimeout(searchTimeout)
   }
@@ -161,6 +163,7 @@ async function logout() {
 function addToCart(product: Product) {
   saleError.value = ''
   saleSuccess.value = ''
+  searchMessage.value = ''
   lastSale.value = null
   const item = cartItems.value.find((cartItem) => cartItem.product.id === product.id)
   if (item) {
@@ -168,6 +171,38 @@ function addToCart(product: Product) {
     return
   }
   cartItems.value.push({ product, quantity: 1 })
+}
+
+async function addSearchResultToCart() {
+  const value = search.value.trim()
+  if (!value) {
+    searchMessage.value = 'Digite nome, SKU ou código de barras para buscar.'
+    return
+  }
+  if (searchTimeout) {
+    clearTimeout(searchTimeout)
+  }
+
+  productQuery.value = value
+  const params = new URLSearchParams({ q: value })
+  const searchResults = await $fetch<PaginatedResponse<Product>>(`${config.public.apiBase}/api/catalog/products/?${params.toString()}`, {
+    credentials: 'include'
+  })
+
+  const results = searchResults.results || []
+  if (results.length === 1) {
+    addToCart(results[0])
+    search.value = ''
+    productQuery.value = ''
+    searchMessage.value = `${results[0].name} adicionado ao carrinho.`
+    await refreshProducts()
+    return
+  }
+  if (!results.length) {
+    searchMessage.value = 'Nenhum produto encontrado para esta busca.'
+    return
+  }
+  searchMessage.value = 'Mais de um produto encontrado. Escolha na lista.'
 }
 
 function decrementItem(productId: number) {
@@ -330,8 +365,9 @@ function money(value: number | string) {
 
         <label class="search-field">
           Buscar por nome, SKU ou código de barras
-          <input v-model="search" type="search" placeholder="Ex.: água, SKU ou código">
+          <input v-model="search" type="search" placeholder="Ex.: água, SKU ou código" @keydown.enter.prevent="addSearchResultToCart">
         </label>
+        <p v-if="searchMessage" class="muted">{{ searchMessage }}</p>
 
         <p v-if="!isClient || isLoadingUser || isLoadingProducts" class="muted">Carregando produtos...</p>
         <p v-else-if="!products?.results.length" class="muted">Nenhum produto encontrado.</p>
