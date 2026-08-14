@@ -42,6 +42,14 @@ type Sale = {
   payment_method: string
   amount_received: string
   change_amount: string
+  items: Array<{
+    id: number
+    product_name: string
+    product_sku: string
+    quantity: string
+    unit_price: string
+    line_total: string
+  }>
 }
 
 const paymentMethods = [
@@ -66,6 +74,7 @@ const paymentMethod = ref('cash')
 const amountReceived = ref('')
 const saleError = ref('')
 const saleSuccess = ref('')
+const lastSale = ref<Sale | null>(null)
 const displayName = computed(() => user.value?.name || user.value?.username || 'Usuário')
 const storeNames = computed(() => user.value?.stores.map((store) => `${store.code} - ${store.name}`).join(', ') || 'Nenhuma loja ativa')
 const selectedStore = computed(() => user.value?.stores.find((store) => store.id === selectedStoreId.value))
@@ -118,7 +127,7 @@ watch(cartTotal, (value) => {
     amountReceived.value = ''
     return
   }
-  if (paymentMethod.value !== 'cash' || !amountReceived.value) {
+  if (paymentMethod.value !== 'cash') {
     amountReceived.value = value.toFixed(2)
   }
 })
@@ -126,9 +135,7 @@ watch(cartTotal, (value) => {
 watch(paymentMethod, (value) => {
   saleError.value = ''
   saleSuccess.value = ''
-  if (value !== 'cash') {
-    amountReceived.value = cartTotal.value ? cartTotal.value.toFixed(2) : ''
-  }
+  amountReceived.value = value !== 'cash' && cartTotal.value ? cartTotal.value.toFixed(2) : ''
 })
 
 async function logout() {
@@ -154,6 +161,7 @@ async function logout() {
 function addToCart(product: Product) {
   saleError.value = ''
   saleSuccess.value = ''
+  lastSale.value = null
   const item = cartItems.value.find((cartItem) => cartItem.product.id === product.id)
   if (item) {
     item.quantity += 1
@@ -165,6 +173,7 @@ function addToCart(product: Product) {
 function decrementItem(productId: number) {
   saleError.value = ''
   saleSuccess.value = ''
+  lastSale.value = null
   const item = cartItems.value.find((cartItem) => cartItem.product.id === productId)
   if (!item) {
     return
@@ -179,7 +188,12 @@ function decrementItem(productId: number) {
 function removeItem(productId: number) {
   saleError.value = ''
   saleSuccess.value = ''
+  lastSale.value = null
   cartItems.value = cartItems.value.filter((cartItem) => cartItem.product.id !== productId)
+}
+
+function getPaymentMethodLabel(value: string) {
+  return paymentMethods.find((method) => method.value === value)?.label || value
 }
 
 function getFetchErrorMessage(error: unknown) {
@@ -243,6 +257,7 @@ async function closeSale() {
 
     cartItems.value = []
     amountReceived.value = ''
+    lastSale.value = sale
     saleSuccess.value = sale.change_amount !== '0.00'
       ? `Venda #${sale.id} finalizada em ${money(sale.total_amount)}. Troco: ${money(sale.change_amount)}.`
       : `Venda #${sale.id} finalizada em ${money(sale.total_amount)}.`
@@ -394,6 +409,39 @@ function money(value: number | string) {
       <button type="button" class="close-sale-button" :class="{ 'button-loading': isClosingSale }" :disabled="!canCloseSale" @click="closeSale">
         {{ isClosingSale ? 'Finalizando...' : 'Finalizar venda' }}
       </button>
+
+      <section v-if="lastSale" class="receipt-box" aria-label="Resumo da última venda">
+        <div class="receipt-heading">
+          <div>
+            <p class="eyebrow">Resumo</p>
+            <h3>Venda #{{ lastSale.id }}</h3>
+          </div>
+          <strong>{{ money(lastSale.total_amount) }}</strong>
+        </div>
+
+        <ul class="receipt-items">
+          <li v-for="item in lastSale.items" :key="item.id">
+            <span>{{ item.product_name }}</span>
+            <small>{{ Number(item.quantity).toLocaleString('pt-BR') }} x {{ money(item.unit_price) }}</small>
+            <strong>{{ money(item.line_total) }}</strong>
+          </li>
+        </ul>
+
+        <dl class="receipt-totals">
+          <div>
+            <dt>Forma de pagamento</dt>
+            <dd>{{ getPaymentMethodLabel(lastSale.payment_method) }}</dd>
+          </div>
+          <div>
+            <dt>Valor recebido</dt>
+            <dd>{{ money(lastSale.amount_received) }}</dd>
+          </div>
+          <div>
+            <dt>Troco</dt>
+            <dd>{{ money(lastSale.change_amount) }}</dd>
+          </div>
+        </dl>
+      </section>
     </aside>
   </main>
 </template>
@@ -633,6 +681,55 @@ select {
 
 .cart-list small {
   color: #64748b;
+}
+
+.receipt-box {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  border: 1px dashed #94a3b8;
+  border-radius: 16px;
+  background: #f8fafc;
+}
+
+.receipt-heading,
+.receipt-items li,
+.receipt-totals div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.receipt-heading h3 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.receipt-items {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.receipt-items li {
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.receipt-items span,
+.receipt-items small {
+  display: block;
+}
+
+.receipt-items small {
+  color: #64748b;
+}
+
+.receipt-totals {
+  gap: 10px;
 }
 
 .payment-box {
