@@ -269,6 +269,13 @@ function getFetchErrorMessage(error: unknown) {
   return 'Não foi possível finalizar a venda.'
 }
 
+function createClientRequestId() {
+  if (globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID()
+  }
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
 async function closeSale() {
   saleError.value = ''
   saleSuccess.value = ''
@@ -287,6 +294,7 @@ async function closeSale() {
   }
 
   isClosingSale.value = true
+  const clientRequestId = createClientRequestId()
 
   try {
     const csrf = await $fetch<{ csrfToken: string }>(`${config.public.apiBase}/api/auth/csrf/`, {
@@ -302,6 +310,7 @@ async function closeSale() {
         store: selectedStoreId.value,
         payment_method: paymentMethod.value,
         amount_received: amountToSend.value.toFixed(2),
+        client_request_id: clientRequestId,
         items: cartItems.value.map((item) => ({
           product: item.product.id,
           quantity: item.quantity.toFixed(3)

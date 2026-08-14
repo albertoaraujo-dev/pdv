@@ -43,10 +43,11 @@ class SaleSerializer(serializers.ModelSerializer):
             "payment_method",
             "amount_received",
             "change_amount",
+            "client_request_id",
             "items",
             "created_at",
         ]
-        read_only_fields = ["organization", "cashier", "status", "total_amount", "amount_received", "change_amount", "created_at"]
+        read_only_fields = ["organization", "cashier", "status", "total_amount", "amount_received", "change_amount", "client_request_id", "created_at"]
 
 
 class SaleCreateSerializer(serializers.ModelSerializer):
@@ -55,7 +56,7 @@ class SaleCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Sale
-        fields = ["id", "store", "payment_method", "amount_received", "items"]
+        fields = ["id", "store", "payment_method", "amount_received", "client_request_id", "items"]
 
     def calculate_total(self, items):
         total = Decimal("0.00")
@@ -96,6 +97,11 @@ class SaleCreateSerializer(serializers.ModelSerializer):
         total = validated_data.pop("_calculated_total")
         amount_received = validated_data["amount_received"]
         payment_method = validated_data.get("payment_method", Sale.PaymentMethod.CASH)
+        client_request_id = validated_data.get("client_request_id")
+        if client_request_id:
+            existing_sale = Sale.objects.filter(cashier=request.user, store=store, client_request_id=client_request_id).first()
+            if existing_sale:
+                return existing_sale
         sale = Sale.objects.create(
             organization=store.organization,
             store=store,
@@ -104,6 +110,7 @@ class SaleCreateSerializer(serializers.ModelSerializer):
             payment_method=payment_method,
             amount_received=amount_received,
             change_amount=(amount_received - total).quantize(MONEY_QUANT) if payment_method == Sale.PaymentMethod.CASH else Decimal("0.00"),
+            client_request_id=client_request_id,
         )
         for item_data in items_data:
             product = item_data["product"]

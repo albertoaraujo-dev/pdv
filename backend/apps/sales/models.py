@@ -3,6 +3,7 @@ from decimal import Decimal
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import Q
 
 from apps.catalog.models import Product
 from apps.tenants.models import Organization, Store
@@ -27,6 +28,7 @@ class Sale(models.Model):
     payment_method = models.CharField("forma de pagamento", max_length=24, choices=PaymentMethod.choices, default=PaymentMethod.CASH)
     amount_received = models.DecimalField("valor recebido", max_digits=12, decimal_places=2, default=Decimal("0.00"))
     change_amount = models.DecimalField("troco", max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    client_request_id = models.CharField("ID da requisição do PDV", max_length=64, blank=True, null=True)
     created_at = models.DateTimeField("criado em", auto_now_add=True)
     updated_at = models.DateTimeField("atualizado em", auto_now=True)
 
@@ -37,6 +39,13 @@ class Sale(models.Model):
         indexes = [
             models.Index(fields=["organization", "store", "created_at"]),
             models.Index(fields=["organization", "status", "created_at"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["cashier", "store", "client_request_id"],
+                condition=Q(client_request_id__isnull=False),
+                name="unique_sale_client_request_per_cashier_store",
+            ),
         ]
 
     def clean(self):

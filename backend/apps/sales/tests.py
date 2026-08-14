@@ -92,6 +92,25 @@ class SalesApiTests(TestCase):
         self.assertEqual(sale.amount_received, Decimal("3.50"))
         self.assertEqual(sale.change_amount, Decimal("0.00"))
 
+    def test_sale_create_is_idempotent_for_same_client_request_id(self):
+        self.client.force_authenticate(self.operator)
+        payload = {
+            "store": self.first_store.id,
+            "payment_method": Sale.PaymentMethod.CASH,
+            "amount_received": "10.00",
+            "client_request_id": "request-123",
+            "items": [{"product": self.product.id, "quantity": "1.000"}],
+        }
+
+        first_response = self.client.post(reverse("sale-list"), payload, format="json")
+        second_response = self.client.post(reverse("sale-list"), payload, format="json")
+
+        self.assertEqual(first_response.status_code, 201, first_response.json())
+        self.assertEqual(second_response.status_code, 201, second_response.json())
+        self.assertEqual(first_response.json()["id"], second_response.json()["id"])
+        self.assertEqual(Sale.objects.count(), 1)
+        self.assertEqual(SaleItem.objects.count(), 1)
+
     def test_sale_rejects_amount_received_lower_than_total(self):
         self.client.force_authenticate(self.operator)
 
