@@ -70,6 +70,7 @@ class SalesApiTests(TestCase):
         self.assertEqual(sale.change_amount, Decimal("8.00"))
         self.assertEqual(SaleItem.objects.count(), 2)
         self.assertEqual(response.json()["total_amount"], "12.00")
+        self.assertEqual(response.json()["payment_method_label"], "Dinheiro")
         self.assertEqual(response.json()["change_amount"], "8.00")
 
     def test_non_cash_sale_has_no_change(self):

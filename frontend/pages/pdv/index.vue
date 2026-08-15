@@ -40,6 +40,7 @@ type Sale = {
   id: number
   total_amount: string
   payment_method: string
+  payment_method_label: string
   amount_received: string
   change_amount: string
   items: Array<{
@@ -256,10 +257,6 @@ function updateItemQuantity(productId: number, value: string | number, input?: H
     return
   }
   item.quantity = quantity
-}
-
-function getPaymentMethodLabel(value: string) {
-  return paymentMethods.find((method) => method.value === value)?.label || value
 }
 
 function getFetchErrorMessage(error: unknown) {
@@ -508,7 +505,7 @@ function money(value: number | string) {
         <dl class="receipt-totals">
           <div>
             <dt>Forma de pagamento</dt>
-            <dd>{{ getPaymentMethodLabel(lastSale.payment_method) }}</dd>
+            <dd>{{ lastSale.payment_method_label }}</dd>
           </div>
           <div>
             <dt>Valor recebido</dt>

@@ -32,6 +32,7 @@ class SaleItemSerializer(serializers.ModelSerializer):
 
 class SaleSerializer(serializers.ModelSerializer):
     items = SaleItemSerializer(many=True, read_only=True)
+    payment_method_label = serializers.CharField(source="get_payment_method_display", read_only=True)
 
     class Meta:
         model = Sale
@@ -43,13 +44,14 @@ class SaleSerializer(serializers.ModelSerializer):
             "status",
             "total_amount",
             "payment_method",
+            "payment_method_label",
             "amount_received",
             "change_amount",
             "client_request_id",
             "items",
             "created_at",
         ]
-        read_only_fields = ["organization", "cashier", "status", "total_amount", "amount_received", "change_amount", "client_request_id", "created_at"]
+        read_only_fields = ["organization", "cashier", "status", "total_amount", "payment_method_label", "amount_received", "change_amount", "client_request_id", "created_at"]
 
 
 class SaleCreateSerializer(serializers.ModelSerializer):
