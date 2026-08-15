@@ -80,6 +80,8 @@ class SaleItem(models.Model):
         errors = {}
         if self.quantity is not None and self.quantity <= 0:
             errors["quantity"] = "A quantidade precisa ser maior que zero."
+        elif self.quantity is not None and self.quantity != self.quantity.to_integral_value():
+            errors["quantity"] = "Venda somente em unidades inteiras."
         if self.product_id and self.sale_id and self.product.organization_id != self.sale.organization_id:
             errors["product"] = "O produto precisa pertencer à mesma organização da venda."
         if errors:

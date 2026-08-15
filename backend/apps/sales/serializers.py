@@ -19,6 +19,8 @@ class SaleItemInputSerializer(serializers.Serializer):
     def validate_quantity(self, value):
         if value <= 0:
             raise serializers.ValidationError("A quantidade precisa ser maior que zero.")
+        if value != value.to_integral_value():
+            raise serializers.ValidationError("Venda somente em unidades inteiras.")
         return value
 
 

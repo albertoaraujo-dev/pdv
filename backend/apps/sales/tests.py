@@ -190,6 +190,24 @@ class SalesApiTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["errors"]["items"][0]["quantity"], ["A quantidade precisa ser maior que zero."])
 
+    def test_sale_rejects_fractional_quantity(self):
+        self.client.force_authenticate(self.operator)
+
+        response = self.client.post(
+            reverse("sale-list"),
+            {
+                "store": self.first_store.id,
+                "payment_method": Sale.PaymentMethod.CASH,
+                "amount_received": "7.00",
+                "items": [{"product": self.product.id, "quantity": "1.500"}],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["errors"]["items"][0]["quantity"], ["Venda somente em unidades inteiras."])
+        self.assertFalse(Sale.objects.exists())
+
     def test_sales_list_is_scoped_to_allowed_stores(self):
         allowed_sale = Sale.objects.create(organization=self.first_org, store=self.first_store, cashier=self.operator, total_amount="3.50")
         other_user = get_user_model().objects.create_user(username="other", password="test-pass")
