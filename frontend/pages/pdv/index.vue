@@ -78,6 +78,7 @@ const saleError = ref('')
 const saleSuccess = ref('')
 const searchMessage = ref('')
 const lastSale = ref<Sale | null>(null)
+const searchInput = ref<HTMLInputElement | null>(null)
 const displayName = computed(() => user.value?.name || user.value?.username || 'Usuário')
 const storeNames = computed(() => user.value?.stores.map((store) => `${store.code} - ${store.name}`).join(', ') || 'Nenhuma loja ativa')
 const selectedStore = computed(() => user.value?.stores.find((store) => store.id === selectedStoreId.value))
@@ -108,7 +109,14 @@ const isClient = ref(false)
 
 onMounted(() => {
   isClient.value = true
+  focusSearch()
 })
+
+function focusSearch() {
+  nextTick(() => {
+    window.setTimeout(() => searchInput.value?.focus({ preventScroll: true }), 0)
+  })
+}
 
 watch(user, (value) => {
   if (!selectedStoreId.value && value?.stores.length === 1) {
@@ -170,9 +178,11 @@ function addToCart(product: Product) {
   const item = cartItems.value.find((cartItem) => cartItem.product.id === product.id)
   if (item) {
     item.quantity += 1
+    focusSearch()
     return
   }
   cartItems.value.push({ product, quantity: 1 })
+  focusSearch()
 }
 
 async function addSearchResultToCart() {
@@ -204,6 +214,7 @@ async function addSearchResultToCart() {
       productQuery.value = ''
       searchMessage.value = `${results[0].name} adicionado ao carrinho.`
       await refreshProducts()
+      focusSearch()
       return
     }
     if (!results.length) {
@@ -215,6 +226,7 @@ async function addSearchResultToCart() {
     searchMessage.value = 'Não foi possível buscar o produto. Tente novamente.'
   } finally {
     isAddingSearchResult.value = false
+    focusSearch()
   }
 }
 
@@ -334,6 +346,7 @@ async function closeSale() {
       ? `Venda #${sale.id} finalizada em ${money(sale.total_amount)}. Troco: ${money(sale.change_amount)}.`
       : `Venda #${sale.id} finalizada em ${money(sale.total_amount)}.`
     await refreshProducts()
+    focusSearch()
   } catch (error) {
     saleError.value = getFetchErrorMessage(error)
   } finally {
@@ -402,7 +415,7 @@ function money(value: number | string) {
 
         <label class="search-field">
           Buscar por nome, SKU ou código de barras
-          <input v-model="search" type="search" :disabled="isAddingSearchResult" placeholder="Ex.: água, SKU ou código" @keydown.enter.prevent="addSearchResultToCart">
+          <input ref="searchInput" v-model="search" type="search" :disabled="isAddingSearchResult" placeholder="Ex.: água, SKU ou código" @keydown.enter.prevent="addSearchResultToCart">
         </label>
         <p v-if="isAddingSearchResult" class="muted">Buscando produto...</p>
         <p v-if="searchMessage" class="muted">{{ searchMessage }}</p>
