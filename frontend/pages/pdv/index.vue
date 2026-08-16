@@ -88,6 +88,15 @@ const amountReceivedNumber = computed(() => Number(String(amountReceived.value).
 const amountToSend = computed(() => paymentMethod.value === 'cash' ? amountReceivedNumber.value : cartTotal.value)
 const changeAmount = computed(() => Math.max(amountReceivedNumber.value - cartTotal.value, 0))
 const hasEnoughPayment = computed(() => amountToSend.value >= cartTotal.value)
+const paymentPendingMessage = computed(() => {
+  if (!cartItems.value.length || paymentMethod.value !== 'cash' || hasEnoughPayment.value) {
+    return ''
+  }
+  if (!amountReceived.value) {
+    return 'Informe o valor recebido em dinheiro para finalizar a venda.'
+  }
+  return 'O valor recebido em dinheiro ainda é menor que o total da venda.'
+})
 const canCloseSale = computed(() => Boolean(selectedStoreId.value && cartItems.value.length && hasEnoughPayment.value && !isClosingSale.value))
 const productUrl = computed(() => {
   const params = new URLSearchParams()
@@ -491,6 +500,7 @@ function money(value: number | string) {
       </div>
 
       <p v-if="isClient && selectedStore" class="muted">Loja da venda: {{ selectedStore.code }} - {{ selectedStore.name }}</p>
+      <p v-if="paymentPendingMessage" class="sale-message sale-message-warning">{{ paymentPendingMessage }}</p>
       <p v-if="saleError" class="sale-message sale-message-error">{{ saleError }}</p>
       <p v-if="saleSuccess" class="sale-message sale-message-success">{{ saleSuccess }}</p>
 
@@ -682,6 +692,12 @@ select {
   border: 1px solid #fecaca;
   background: #fef2f2;
   color: #991b1b;
+}
+
+.sale-message-warning {
+  border: 1px solid #fde68a;
+  background: #fffbeb;
+  color: #92400e;
 }
 
 .sale-message-success {
