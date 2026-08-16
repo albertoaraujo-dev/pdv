@@ -490,7 +490,7 @@ function money(value: number | string) {
 
         <label class="store-field">
           Valor recebido
-          <input v-model="amountReceived" :disabled="paymentMethod !== 'cash'" inputmode="decimal" placeholder="0,00">
+          <input v-model="amountReceived" :disabled="paymentMethod !== 'cash'" inputmode="decimal" placeholder="0,00" @keydown.enter.prevent="closeSale">
         </label>
 
         <div v-if="paymentMethod === 'cash'" class="change-row">
