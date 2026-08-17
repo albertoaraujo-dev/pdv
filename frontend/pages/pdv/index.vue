@@ -87,6 +87,7 @@ const cartItemCount = computed(() => cartItems.value.reduce((total, item) => tot
 const amountReceivedNumber = computed(() => Number(String(amountReceived.value).replace(',', '.')) || 0)
 const amountToSend = computed(() => paymentMethod.value === 'cash' ? amountReceivedNumber.value : cartTotal.value)
 const changeAmount = computed(() => Math.max(amountReceivedNumber.value - cartTotal.value, 0))
+const remainingCashAmount = computed(() => Math.max(cartTotal.value - amountReceivedNumber.value, 0))
 const hasEnoughPayment = computed(() => amountToSend.value >= cartTotal.value)
 const paymentPendingMessage = computed(() => {
   if (!cartItems.value.length || paymentMethod.value !== 'cash' || hasEnoughPayment.value) {
@@ -95,7 +96,7 @@ const paymentPendingMessage = computed(() => {
   if (!amountReceived.value) {
     return 'Informe o valor recebido em dinheiro para finalizar a venda.'
   }
-  return 'O valor recebido em dinheiro ainda é menor que o total da venda.'
+  return `O valor recebido em dinheiro ainda é menor que o total da venda. Faltam ${money(remainingCashAmount.value)}.`
 })
 const canCloseSale = computed(() => Boolean(selectedStoreId.value && cartItems.value.length && hasEnoughPayment.value && !isClosingSale.value))
 const productUrl = computed(() => {
