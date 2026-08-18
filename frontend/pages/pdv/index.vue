@@ -89,6 +89,7 @@ const amountToSend = computed(() => paymentMethod.value === 'cash' ? amountRecei
 const changeAmount = computed(() => Math.max(amountReceivedNumber.value - cartTotal.value, 0))
 const remainingCashAmount = computed(() => Math.max(cartTotal.value - amountReceivedNumber.value, 0))
 const hasEnoughPayment = computed(() => amountToSend.value >= cartTotal.value)
+const storePendingMessage = computed(() => cartItems.value.length && !selectedStoreId.value ? 'Selecione a loja da venda para finalizar.' : '')
 const paymentPendingMessage = computed(() => {
   if (!cartItems.value.length || paymentMethod.value !== 'cash' || hasEnoughPayment.value) {
     return ''
@@ -530,6 +531,7 @@ function money(value: number | string) {
       </div>
 
       <p v-if="isClient && selectedStore" class="muted">Loja da venda: {{ selectedStore.code }} - {{ selectedStore.name }}</p>
+      <p v-if="storePendingMessage" class="sale-message sale-message-warning">{{ storePendingMessage }}</p>
       <p v-if="paymentPendingMessage" class="sale-message sale-message-warning">{{ paymentPendingMessage }}</p>
       <p v-if="saleError" class="sale-message sale-message-error">{{ saleError }}</p>
       <p v-if="saleSuccess" class="sale-message sale-message-success">{{ saleSuccess }}</p>
