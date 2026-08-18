@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.contrib.auth.forms import UserCreationForm
 from django import forms
-from django.db.models import Count, Q
+from django.db.models import Count, Prefetch, Q
 from unfold.admin import ModelAdmin
 from unfold.widgets import UnfoldAdminPasswordWidget
 
@@ -223,8 +223,12 @@ class UserAdmin(DjangoUserAdmin, ModelAdmin):
     def get_queryset(self, request):
         queryset = super().get_queryset(request)
         if request.user.is_superuser:
-            return queryset
-        return queryset.filter(pk__in=get_manageable_users(request.user))
+            return queryset.select_related("profile").prefetch_related(
+                Prefetch("profile__store_accesses", queryset=UserStoreAccess.objects.filter(is_active=True).select_related("store").order_by("store__name"), to_attr="active_store_accesses")
+            )
+        return queryset.filter(pk__in=get_manageable_users(request.user)).select_related("profile").prefetch_related(
+            Prefetch("profile__store_accesses", queryset=UserStoreAccess.objects.filter(is_active=True).select_related("store").order_by("store__name"), to_attr="active_store_accesses")
+        )
 
     def get_fieldsets(self, request, obj=None):
         if request.user.is_superuser:
@@ -301,6 +305,9 @@ class UserAdmin(DjangoUserAdmin, ModelAdmin):
         profile = getattr(obj, "profile", None)
         if not profile:
             return "-"
+        prefetched_accesses = getattr(profile, "active_store_accesses", None)
+        if prefetched_accesses is not None:
+            return ", ".join(access.store.name for access in prefetched_accesses) or "-"
         stores = Store.objects.filter(user_accesses__profile=profile, user_accesses__is_active=True).order_by("name")
         return ", ".join(store.name for store in stores) or "-"
 

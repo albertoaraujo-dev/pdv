@@ -244,6 +244,16 @@ class TenantAdminScopeTests(TestCase):
 
         self.assertEqual(set(dict(role_filter.lookups(request, model_admin))), set(dict(UserProfile.Role.choices)))
 
+    def test_user_admin_queryset_prefetches_operational_columns(self):
+        model_admin = UserAdmin(get_user_model(), admin.site)
+        queryset = model_admin.get_queryset(self.request_for(self.manager))
+
+        self.assertIn("profile", queryset.query.select_related)
+        self.assertEqual(len(queryset._prefetch_related_lookups), 1)
+        user = queryset.get(pk=self.operator_user.pk)
+        self.assertTrue(hasattr(user.profile, "active_store_accesses"))
+        self.assertEqual(model_admin.profile_stores(user), "Matriz")
+
     def test_manager_sees_user_menu_when_has_subordinates(self):
         model_admin = UserAdmin(get_user_model(), admin.site)
         request = self.request_for(self.manager)
