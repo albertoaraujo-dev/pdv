@@ -179,7 +179,7 @@ class UserAdmin(DjangoUserAdmin, ModelAdmin):
     add_form = ManagedUserCreationForm
     change_form = ManagedUserChangeForm
     change_form_show_cancel_button = True
-    list_display = ["username", "first_name", "last_name", "email", "is_active"]
+    list_display = ["username", "first_name", "last_name", "email", "profile_role", "profile_stores", "is_active"]
     list_editable = ["is_active"]
     list_filter = ["is_active"]
     list_per_page = 25
@@ -261,6 +261,19 @@ class UserAdmin(DjangoUserAdmin, ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return request.user.is_superuser
+
+    @admin.display(description="perfil")
+    def profile_role(self, obj):
+        profile = getattr(obj, "profile", None)
+        return profile.get_role_display() if profile else "-"
+
+    @admin.display(description="lojas permitidas")
+    def profile_stores(self, obj):
+        profile = getattr(obj, "profile", None)
+        if not profile:
+            return "-"
+        stores = Store.objects.filter(user_accesses__profile=profile, user_accesses__is_active=True).order_by("name")
+        return ", ".join(store.name for store in stores) or "-"
 
     def save_model(self, request, obj, form, change):
         if not request.user.is_superuser:

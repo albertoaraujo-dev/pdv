@@ -220,11 +220,13 @@ class TenantAdminScopeTests(TestCase):
     def test_user_admin_list_uses_operational_columns(self):
         model_admin = UserAdmin(get_user_model(), admin.site)
 
-        self.assertEqual(model_admin.list_display, ["username", "first_name", "last_name", "email", "is_active"])
+        self.assertEqual(model_admin.list_display, ["username", "first_name", "last_name", "email", "profile_role", "profile_stores", "is_active"])
         self.assertEqual(model_admin.list_editable, ["is_active"])
         self.assertEqual(model_admin.list_filter, ["is_active"])
         self.assertNotIn("is_staff", model_admin.list_display)
         self.assertNotIn("is_superuser", model_admin.list_display)
+        self.assertEqual(model_admin.profile_role(self.operator_user), "Operador")
+        self.assertEqual(model_admin.profile_stores(self.operator_user), "Matriz")
 
     def test_manager_sees_user_menu_when_has_subordinates(self):
         model_admin = UserAdmin(get_user_model(), admin.site)
