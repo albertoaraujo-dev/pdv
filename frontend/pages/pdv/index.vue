@@ -313,6 +313,10 @@ function createClientRequestId() {
 }
 
 async function closeSale() {
+  if (isClosingSale.value) {
+    return
+  }
+
   saleError.value = ''
   saleSuccess.value = ''
 
