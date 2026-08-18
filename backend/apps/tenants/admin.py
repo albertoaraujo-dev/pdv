@@ -168,6 +168,35 @@ class TenantScopedAdminMixin:
         super().save_model(request, obj, form, change)
 
 
+class UserProfileRoleFilter(admin.SimpleListFilter):
+    title = "perfil"
+    parameter_name = "profile_role"
+
+    def lookups(self, request, model_admin):
+        choices = UserProfile.Role.choices
+        if is_manager(request.user):
+            choices = [choice for choice in choices if choice[0] in SUBORDINATE_ROLES]
+        return choices
+
+    def queryset(self, request, queryset):
+        if self.value():
+            return queryset.filter(profile__role=self.value())
+        return queryset
+
+
+class UserStoreFilter(admin.SimpleListFilter):
+    title = "loja permitida"
+    parameter_name = "store"
+
+    def lookups(self, request, model_admin):
+        return [(store.pk, store.name) for store in get_allowed_stores(request.user).order_by("name")]
+
+    def queryset(self, request, queryset):
+        if self.value():
+            return queryset.filter(profile__store_accesses__store_id=self.value(), profile__store_accesses__is_active=True).distinct()
+        return queryset
+
+
 try:
     admin.site.unregister(User)
 except admin.sites.NotRegistered:
@@ -181,7 +210,7 @@ class UserAdmin(DjangoUserAdmin, ModelAdmin):
     change_form_show_cancel_button = True
     list_display = ["username", "first_name", "last_name", "email", "profile_role", "profile_stores", "is_active"]
     list_editable = ["is_active"]
-    list_filter = ["is_active"]
+    list_filter = ["is_active", UserProfileRoleFilter, UserStoreFilter]
     list_per_page = 25
     search_fields = ["username", "first_name", "last_name", "email"]
 

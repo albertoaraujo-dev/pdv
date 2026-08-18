@@ -9,7 +9,7 @@ from unfold.widgets import UnfoldAdminPasswordWidget
 
 from config.settings.base import can_view_profiles_menu
 
-from .admin import OrganizationAdmin, StoreAdmin, UserAdmin, UserProfileAdmin, UserStoreAccessAdmin
+from .admin import OrganizationAdmin, StoreAdmin, UserAdmin, UserProfileAdmin, UserProfileRoleFilter, UserStoreAccessAdmin, UserStoreFilter
 from .models import Organization, Store, UserProfile, UserStoreAccess
 
 
@@ -222,11 +222,27 @@ class TenantAdminScopeTests(TestCase):
 
         self.assertEqual(model_admin.list_display, ["username", "first_name", "last_name", "email", "profile_role", "profile_stores", "is_active"])
         self.assertEqual(model_admin.list_editable, ["is_active"])
-        self.assertEqual(model_admin.list_filter, ["is_active"])
+        self.assertEqual(model_admin.list_filter, ["is_active", UserProfileRoleFilter, UserStoreFilter])
         self.assertNotIn("is_staff", model_admin.list_display)
         self.assertNotIn("is_superuser", model_admin.list_display)
         self.assertEqual(model_admin.profile_role(self.operator_user), "Operador")
         self.assertEqual(model_admin.profile_stores(self.operator_user), "Matriz")
+
+    def test_user_admin_filters_are_scoped_for_manager(self):
+        model_admin = UserAdmin(get_user_model(), admin.site)
+        request = self.request_for(self.manager)
+        role_filter = UserProfileRoleFilter(request, {}, get_user_model(), model_admin)
+        store_filter = UserStoreFilter(request, {}, get_user_model(), model_admin)
+
+        self.assertEqual(set(dict(role_filter.lookups(request, model_admin))), {UserProfile.Role.OPERATOR, UserProfile.Role.CASHIER, UserProfile.Role.FISCAL})
+        self.assertEqual(list(store_filter.lookups(request, model_admin)), [(self.first_store.pk, "Matriz")])
+
+    def test_user_admin_role_filter_shows_all_roles_for_admin(self):
+        model_admin = UserAdmin(get_user_model(), admin.site)
+        request = self.request_for(self.admin_user)
+        role_filter = UserProfileRoleFilter(request, {}, get_user_model(), model_admin)
+
+        self.assertEqual(set(dict(role_filter.lookups(request, model_admin))), set(dict(UserProfile.Role.choices)))
 
     def test_manager_sees_user_menu_when_has_subordinates(self):
         model_admin = UserAdmin(get_user_model(), admin.site)
