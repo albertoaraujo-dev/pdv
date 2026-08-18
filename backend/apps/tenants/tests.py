@@ -305,6 +305,14 @@ class TenantAdminScopeTests(TestCase):
         self.assertEqual(form.fields["role"].initial, UserProfile.Role.OPERATOR)
         self.assertEqual(list(form.fields["stores"].initial), [self.first_store])
 
+    def test_admin_user_edit_form_keeps_all_role_choices(self):
+        model_admin = UserAdmin(get_user_model(), admin.site)
+        form_class = model_admin.get_form(self.request_for(self.admin_user), obj=self.operator_user, change=True)
+        form = form_class(instance=self.operator_user)
+
+        self.assertEqual(set(dict(form.fields["role"].choices)), set(dict(UserProfile.Role.choices)))
+        self.assertEqual(list(form.fields["stores"].queryset), [self.first_store])
+
     def test_manager_user_edit_updates_role_and_store_accesses(self):
         inactive_access = UserStoreAccess.objects.create(profile=self.operator_profile, store=Store.objects.create(organization=self.first_org, name="Outra", code="O01"))
 

@@ -60,9 +60,11 @@ class ManagedUserCreationForm(UserCreationForm):
         self.fields["password2"].widget = UnfoldAdminPasswordWidget(attrs={"autocomplete": "new-password"})
         self.fields["stores"].help_text = "Selecione as lojas que este usuário poderá acessar no PDV."
         self.fields["stores"].error_messages["required"] = "Selecione pelo menos uma loja permitida."
-        self.fields["role"].choices = [choice for choice in UserProfile.Role.choices if choice[0] in SUBORDINATE_ROLES]
+        self.fields["role"].choices = UserProfile.Role.choices
         if request:
             self.fields["stores"].queryset = get_allowed_stores(request.user)
+            if is_manager(request.user):
+                self.fields["role"].choices = [choice for choice in UserProfile.Role.choices if choice[0] in SUBORDINATE_ROLES]
 
 
 class ManagedUserChangeForm(forms.ModelForm):
@@ -83,9 +85,11 @@ class ManagedUserChangeForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["stores"].help_text = "Selecione as lojas que este usuário poderá acessar no PDV."
         self.fields["stores"].error_messages["required"] = "Selecione pelo menos uma loja permitida."
-        self.fields["role"].choices = [choice for choice in UserProfile.Role.choices if choice[0] in SUBORDINATE_ROLES]
+        self.fields["role"].choices = UserProfile.Role.choices
         if request:
             self.fields["stores"].queryset = get_allowed_stores(request.user)
+            if is_manager(request.user):
+                self.fields["role"].choices = [choice for choice in UserProfile.Role.choices if choice[0] in SUBORDINATE_ROLES]
         profile = getattr(self.instance, "profile", None)
         if profile:
             self.fields["role"].initial = profile.role
