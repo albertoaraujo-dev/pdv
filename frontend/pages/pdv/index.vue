@@ -186,6 +186,10 @@ async function logout() {
 }
 
 function addToCart(product: Product) {
+  if (isClosingSale.value) {
+    return
+  }
+
   saleError.value = ''
   saleSuccess.value = ''
   searchMessage.value = ''
@@ -201,7 +205,7 @@ function addToCart(product: Product) {
 }
 
 async function addSearchResultToCart() {
-  if (isAddingSearchResult.value) {
+  if (isAddingSearchResult.value || isClosingSale.value) {
     return
   }
   const value = search.value.trim()
@@ -246,6 +250,10 @@ async function addSearchResultToCart() {
 }
 
 function decrementItem(productId: number) {
+  if (isClosingSale.value) {
+    return
+  }
+
   saleError.value = ''
   saleSuccess.value = ''
   lastSale.value = null
@@ -261,6 +269,10 @@ function decrementItem(productId: number) {
 }
 
 function removeItem(productId: number) {
+  if (isClosingSale.value) {
+    return
+  }
+
   saleError.value = ''
   saleSuccess.value = ''
   lastSale.value = null
@@ -268,6 +280,10 @@ function removeItem(productId: number) {
 }
 
 function updateItemQuantity(productId: number, value: string | number, input?: HTMLInputElement) {
+  if (isClosingSale.value) {
+    return
+  }
+
   saleError.value = ''
   saleSuccess.value = ''
   lastSale.value = null
@@ -411,7 +427,7 @@ function money(value: number | string) {
 
       <label v-if="isClient && user?.stores.length" class="store-field">
         Loja da venda
-        <select v-model.number="selectedStoreId">
+        <select v-model.number="selectedStoreId" :disabled="isClosingSale">
           <option :value="null" disabled>Selecione uma loja</option>
           <option v-for="store in user.stores" :key="store.id" :value="store.id">
             {{ store.code }} - {{ store.name }}
@@ -434,7 +450,7 @@ function money(value: number | string) {
 
         <label class="search-field">
           Buscar por nome, SKU ou código de barras
-          <input ref="searchInput" v-model="search" type="search" :disabled="isAddingSearchResult" placeholder="Ex.: água, SKU ou código" @keydown.enter.prevent="addSearchResultToCart">
+          <input ref="searchInput" v-model="search" type="search" :disabled="isAddingSearchResult || isClosingSale" placeholder="Ex.: água, SKU ou código" @keydown.enter.prevent="addSearchResultToCart">
         </label>
         <p v-if="isAddingSearchResult" class="muted">Buscando produto...</p>
         <p v-if="searchMessage" class="muted">{{ searchMessage }}</p>
@@ -450,7 +466,7 @@ function money(value: number | string) {
             </div>
             <div class="product-actions">
               <span>{{ money(product.price) }}</span>
-              <button type="button" @click="addToCart(product)">
+              <button type="button" :disabled="isClosingSale" @click="addToCart(product)">
                 Adicionar
               </button>
             </div>
@@ -475,10 +491,10 @@ function money(value: number | string) {
               <small>{{ item.quantity }} x {{ money(item.product.price) }}</small>
             </div>
             <div class="quantity-actions">
-              <button type="button" @click="decrementItem(item.product.id)">-</button>
-              <input class="quantity-input" type="number" min="1" step="1" :value="item.quantity" inputmode="numeric" aria-label="Quantidade" @change="updateItemQuantity(item.product.id, ($event.target as HTMLInputElement).value, $event.target as HTMLInputElement)">
-              <button type="button" @click="addToCart(item.product)">+</button>
-              <button type="button" @click="removeItem(item.product.id)">Remover</button>
+              <button type="button" :disabled="isClosingSale" @click="decrementItem(item.product.id)">-</button>
+              <input class="quantity-input" type="number" min="1" step="1" :value="item.quantity" :disabled="isClosingSale" inputmode="numeric" aria-label="Quantidade" @change="updateItemQuantity(item.product.id, ($event.target as HTMLInputElement).value, $event.target as HTMLInputElement)">
+              <button type="button" :disabled="isClosingSale" @click="addToCart(item.product)">+</button>
+              <button type="button" :disabled="isClosingSale" @click="removeItem(item.product.id)">Remover</button>
             </div>
           </li>
         </ul>
@@ -491,7 +507,7 @@ function money(value: number | string) {
       <div class="payment-box">
         <label class="store-field">
           Forma de pagamento
-          <select v-model="paymentMethod">
+          <select v-model="paymentMethod" :disabled="isClosingSale">
             <option v-for="method in paymentMethods" :key="method.value" :value="method.value">
               {{ method.label }}
             </option>
@@ -500,7 +516,7 @@ function money(value: number | string) {
 
         <label class="store-field">
           Valor recebido
-          <input v-model="amountReceived" :disabled="paymentMethod !== 'cash'" inputmode="decimal" placeholder="0,00" @keydown.enter.prevent="closeSale">
+          <input v-model="amountReceived" :disabled="paymentMethod !== 'cash' || isClosingSale" inputmode="decimal" placeholder="0,00" @keydown.enter.prevent="closeSale">
         </label>
 
         <div v-if="paymentMethod === 'cash'" class="change-row">
