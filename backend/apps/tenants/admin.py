@@ -65,6 +65,33 @@ class ManagedUserCreationForm(UserCreationForm):
             self.fields["stores"].queryset = get_allowed_stores(request.user)
 
 
+class ManagedUserChangeForm(forms.ModelForm):
+    role = forms.ChoiceField(label="Perfil", choices=[])
+    stores = forms.ModelMultipleChoiceField(
+        label="Lojas permitidas",
+        queryset=Store.objects.none(),
+        required=True,
+        widget=forms.CheckboxSelectMultiple,
+    )
+
+    class Meta:
+        model = User
+        fields = ("username", "first_name", "last_name", "email", "is_active", "role", "stores")
+
+    def __init__(self, *args, **kwargs):
+        request = kwargs.pop("request", None)
+        super().__init__(*args, **kwargs)
+        self.fields["stores"].help_text = "Selecione as lojas que este usuário poderá acessar no PDV."
+        self.fields["stores"].error_messages["required"] = "Selecione pelo menos uma loja permitida."
+        self.fields["role"].choices = [choice for choice in UserProfile.Role.choices if choice[0] in SUBORDINATE_ROLES]
+        if request:
+            self.fields["stores"].queryset = get_allowed_stores(request.user)
+        profile = getattr(self.instance, "profile", None)
+        if profile:
+            self.fields["role"].initial = profile.role
+            self.fields["stores"].initial = Store.objects.filter(user_accesses__profile=profile, user_accesses__is_active=True)
+
+
 class TenantScopedAdminMixin:
     change_form_show_cancel_button = True
     tenant_field = "organization"
@@ -146,6 +173,7 @@ except admin.sites.NotRegistered:
 @admin.register(User)
 class UserAdmin(DjangoUserAdmin, ModelAdmin):
     add_form = ManagedUserCreationForm
+    change_form = ManagedUserChangeForm
     change_form_show_cancel_button = True
     list_display = ["username", "first_name", "last_name", "email", "is_active"]
     list_editable = ["is_active"]
@@ -177,6 +205,7 @@ class UserAdmin(DjangoUserAdmin, ModelAdmin):
         return (
             ("Credenciais", {"fields": ("username", "password")}),
             ("Informações pessoais", {"fields": ("first_name", "last_name", "email")}),
+            ("Acesso operacional", {"fields": ("role", "stores")}),
             ("Status", {"fields": ("is_active",)}),
             ("Datas importantes", {"fields": ("last_login", "date_joined")}),
         )
@@ -189,10 +218,12 @@ class UserAdmin(DjangoUserAdmin, ModelAdmin):
         return ("last_login", "date_joined", "password")
 
     def get_form(self, request, obj=None, change=False, **kwargs):
+        if not request.user.is_superuser:
+            kwargs["form"] = self.add_form if obj is None else self.change_form
         if not request.user.is_superuser and obj is None:
             kwargs["form"] = self.add_form
         form_class = super().get_form(request, obj, **kwargs)
-        if request.user.is_superuser or obj is not None:
+        if request.user.is_superuser:
             return form_class
 
         class RequestManagedUserCreationForm(form_class):
@@ -242,6 +273,17 @@ class UserAdmin(DjangoUserAdmin, ModelAdmin):
             if form:
                 for store in form.cleaned_data.get("stores", []):
                     UserStoreAccess.objects.get_or_create(profile=profile, store=store)
+        if organization and change and form:
+            profile = obj.profile
+            profile.role = form.cleaned_data.get("role", profile.role)
+            profile.save(update_fields=["role"])
+            selected_stores = list(form.cleaned_data.get("stores", []))
+            UserStoreAccess.objects.filter(profile=profile).exclude(store__in=selected_stores).update(is_active=False)
+            for store in selected_stores:
+                access, created = UserStoreAccess.objects.get_or_create(profile=profile, store=store)
+                if not created and not access.is_active:
+                    access.is_active = True
+                    access.save(update_fields=["is_active"])
 
 
 @admin.register(Organization)

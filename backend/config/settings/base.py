@@ -35,7 +35,7 @@ def can_view_profiles_menu(request):
     if user.is_superuser:
         return True
     profile = getattr(user, "profile", None)
-    return bool(profile and profile.role == "admin")
+    return bool(profile and profile.role in {"admin", "manager"})
 
 
 def can_view_sales_menu(request):

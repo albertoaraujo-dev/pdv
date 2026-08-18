@@ -7,6 +7,8 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 from unfold.widgets import UnfoldAdminPasswordWidget
 
+from config.settings.base import can_view_profiles_menu
+
 from .admin import OrganizationAdmin, StoreAdmin, UserAdmin, UserProfileAdmin, UserStoreAccessAdmin
 from .models import Organization, Store, UserProfile, UserStoreAccess
 
@@ -241,6 +243,9 @@ class TenantAdminScopeTests(TestCase):
         self.assertTrue(model_admin.has_view_permission(request))
         self.assertTrue(model_admin.has_add_permission(request))
 
+    def test_manager_sees_profiles_sidebar_menu(self):
+        self.assertTrue(can_view_profiles_menu(self.request_for(self.manager)))
+
     def test_manager_cannot_view_admin_user_detail(self):
         model_admin = UserAdmin(get_user_model(), admin.site)
         allowed = model_admin.has_view_permission(self.request_for(self.manager), self.admin_user)
@@ -287,6 +292,34 @@ class TenantAdminScopeTests(TestCase):
         fieldsets = model_admin.get_fieldsets(self.request_for(self.manager), obj=self.operator_user)
 
         self.assertIn(("Credenciais", {"fields": ("username", "password")}), fieldsets)
+        self.assertIn(("Acesso operacional", {"fields": ("role", "stores")}), fieldsets)
+
+    def test_manager_user_edit_form_includes_store_access_fields(self):
+        model_admin = UserAdmin(get_user_model(), admin.site)
+        form_class = model_admin.get_form(self.request_for(self.manager), obj=self.operator_user, change=True)
+        form = form_class(instance=self.operator_user)
+
+        self.assertEqual(form.fields["stores"].help_text, "Selecione as lojas que este usuário poderá acessar no PDV.")
+        self.assertEqual(set(dict(form.fields["role"].choices)), {UserProfile.Role.OPERATOR, UserProfile.Role.CASHIER, UserProfile.Role.FISCAL})
+        self.assertEqual(list(form.fields["stores"].queryset), [self.first_store])
+        self.assertEqual(form.fields["role"].initial, UserProfile.Role.OPERATOR)
+        self.assertEqual(list(form.fields["stores"].initial), [self.first_store])
+
+    def test_manager_user_edit_updates_role_and_store_accesses(self):
+        inactive_access = UserStoreAccess.objects.create(profile=self.operator_profile, store=Store.objects.create(organization=self.first_org, name="Outra", code="O01"))
+
+        class FormStub:
+            cleaned_data = {"role": UserProfile.Role.CASHIER, "stores": [self.first_store]}
+
+        model_admin = UserAdmin(get_user_model(), admin.site)
+
+        model_admin.save_model(self.request_for(self.manager), self.operator_user, FormStub(), change=True)
+
+        self.operator_profile.refresh_from_db()
+        inactive_access.refresh_from_db()
+        self.assertEqual(self.operator_profile.role, UserProfile.Role.CASHIER)
+        self.assertTrue(UserStoreAccess.objects.get(profile=self.operator_profile, store=self.first_store).is_active)
+        self.assertFalse(inactive_access.is_active)
 
     def test_manager_created_user_uses_selected_subordinate_role(self):
         class FormStub:
