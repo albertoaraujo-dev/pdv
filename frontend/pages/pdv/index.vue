@@ -166,6 +166,10 @@ watch([amountReceived, selectedStoreId], () => {
 })
 
 async function logout() {
+  if (isClosingSale.value) {
+    return
+  }
+
   isLoggingOut.value = true
 
   try {
@@ -406,7 +410,7 @@ function money(value: number | string) {
         <span>Logado como</span>
         <strong>{{ displayName }}</strong>
         <small>{{ user.username }} · {{ user.profile.role_label }}</small>
-        <button type="button" :class="{ 'button-loading': isLoggingOut }" :disabled="isLoggingOut" @click="logout">
+        <button type="button" :class="{ 'button-loading': isLoggingOut }" :disabled="isLoggingOut || isClosingSale" @click="logout">
           {{ isLoggingOut ? 'Saindo...' : 'Sair do PDV' }}
         </button>
       </aside>
