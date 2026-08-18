@@ -73,12 +73,17 @@ docker compose restart frontend
 - Schema OpenAPI inicial disponível em `/api/schema/`.
 - Página inicial de documentação da API disponível em `/api/docs/`.
 - Fase 4 de API base com DRF concluída e validada.
+- Fase 5 de painel administrativo em evolução contínua, com escopo por organização/loja e gestão de acessos.
+- Fase 6 de PDV operacional em andamento, com vendas persistidas, pagamentos manuais, troco, idempotência e resumo da venda.
 
 ## Observações
 
 - Scripts de `backup-db.sh` e `restore-db.sh` ainda são placeholders locais, não rotina de produção.
 - `backend/config/settings/production.py` ainda é base mínima; produção real exigirá configuração de proxy, HTTPS, secrets, HSTS e backup.
-- Fluxos de venda, estoque, pagamento, dispositivos e APIs CRUD ainda não fazem parte do estado atual.
+- Estoque transacional ainda não foi implementado.
+- Pix automatizado, cartão integrado, TEF/maquininha, impressão física e dispositivos ainda não foram implementados.
+- O cartão externo e o Pix manual existentes são apenas registros operacionais, sem autorização, webhook ou conciliação automática.
+- Deploy de produção ainda não está pronto; a próxima etapa planejada é um deploy inicial de aprendizado/staging em VPS.
 
 ## Estrutura
 
