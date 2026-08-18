@@ -160,6 +160,11 @@ watch(paymentMethod, (value) => {
   amountReceived.value = value !== 'cash' && cartTotal.value ? cartTotal.value.toFixed(2) : ''
 })
 
+watch([amountReceived, selectedStoreId], () => {
+  saleError.value = ''
+  saleSuccess.value = ''
+})
+
 async function logout() {
   isLoggingOut.value = true
 
