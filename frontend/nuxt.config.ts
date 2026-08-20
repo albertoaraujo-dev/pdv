@@ -1,6 +1,6 @@
 export default defineNuxtConfig({
   compatibilityDate: '2025-05-15',
-  devtools: { enabled: true },
+  devtools: { enabled: process.env.NODE_ENV !== 'production' },
   runtimeConfig: {
     apiBaseServer: process.env.NUXT_API_BASE_SERVER || 'http://backend:8000',
     public: {

@@ -27,6 +27,10 @@ backend/.env
 frontend/.env
 !frontend/.env.example
 
+# Local database dumps
+pdv-backup*.sql
+/backups/
+
 # Local AI planning guides
 /*_DJANGO_NUXT.md
 
