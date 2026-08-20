@@ -48,6 +48,16 @@ def can_view_sales_menu(request):
     return bool(profile and profile.role in {"admin", "manager"})
 
 
+def can_view_inventory_menu(request):
+    user = getattr(request, "user", None)
+    if not user or not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    profile = getattr(user, "profile", None)
+    return bool(profile and profile.role in {"admin", "manager"})
+
+
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-only-secret-key")
 DEBUG = env_bool("DJANGO_DEBUG", False)
 ALLOWED_HOSTS = [host.strip() for host in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if host.strip()]
@@ -223,6 +233,18 @@ UNFOLD = {
                         "icon": "point_of_sale",
                         "link": reverse_lazy("admin:sales_sale_changelist"),
                         "permission": can_view_sales_menu,
+                    },
+                    {
+                        "title": _("Estoque"),
+                        "icon": "inventory_2",
+                        "link": reverse_lazy("admin:inventory_stock_changelist"),
+                        "permission": can_view_inventory_menu,
+                    },
+                    {
+                        "title": _("Movimentações de estoque"),
+                        "icon": "swap_vert",
+                        "link": reverse_lazy("admin:inventory_stockmovement_changelist"),
+                        "permission": can_view_inventory_menu,
                     },
                     {
                         "title": _("Perfis"),

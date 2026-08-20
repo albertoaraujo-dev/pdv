@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.db import transaction
 
 from .models import Stock, StockMovement
@@ -5,6 +7,29 @@ from .models import Stock, StockMovement
 
 class InsufficientStockError(Exception):
     pass
+
+
+@transaction.atomic
+def record_inbound_stock(store, product, quantity, reason, user):
+    quantity = Decimal(quantity)
+    balance, _created = Stock.objects.select_for_update().get_or_create(
+        organization=store.organization,
+        store=store,
+        product=product,
+        defaults={"quantity": 0},
+    )
+    balance.quantity += quantity
+    balance.save(update_fields=["quantity", "updated_at"])
+    return StockMovement.objects.create(
+        organization=store.organization,
+        store=store,
+        product=product,
+        movement_type=StockMovement.MovementType.INBOUND,
+        quantity=quantity,
+        balance_after=balance.quantity,
+        created_by=user,
+        reason=reason,
+    )
 
 
 @transaction.atomic

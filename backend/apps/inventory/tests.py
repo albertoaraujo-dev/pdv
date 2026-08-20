@@ -1,12 +1,16 @@
+from decimal import Decimal
+
 from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase
+from unfold.widgets import UnfoldAdminDecimalFieldWidget, UnfoldAdminSelectWidget, UnfoldAdminTextInputWidget
 
 from apps.catalog.models import Category, Product, Unit
 from apps.tenants.models import Organization, Store, UserProfile, UserStoreAccess
 
-from .admin import StockAdmin, StockMovementAdmin
+from .admin import StockAdmin, StockInboundForm, StockMovementAdmin
 from .models import Stock, StockMovement
+from .services import record_inbound_stock
 
 
 class InventoryAdminTests(TestCase):
@@ -58,3 +62,28 @@ class InventoryAdminTests(TestCase):
 
         self.assertTrue(model_admin.has_module_permission(request))
         self.assertEqual(list(model_admin.get_queryset(request)), [self.movement])
+
+    def test_manager_can_add_inbound_movement_with_scoped_form(self):
+        model_admin = StockMovementAdmin(StockMovement, admin.site)
+        request = self.request_for(self.manager)
+        form_class = model_admin.get_form(request)
+        form = form_class()
+
+        self.assertTrue(model_admin.has_add_permission(request))
+        self.assertIsInstance(form, StockInboundForm)
+        self.assertEqual(model_admin.get_readonly_fields(request), [])
+        self.assertIsInstance(form.fields["quantity"].widget, UnfoldAdminDecimalFieldWidget)
+        self.assertIsInstance(form.fields["reason"].widget, UnfoldAdminTextInputWidget)
+        self.assertIsInstance(form.fields["store"].widget, UnfoldAdminSelectWidget)
+        self.assertIsInstance(form.fields["product"].widget, UnfoldAdminSelectWidget)
+        self.assertEqual(list(form.fields["store"].queryset), [self.first_store])
+        self.assertEqual(list(form.fields["product"].queryset), [self.first_stock.product])
+
+    def test_inbound_stock_updates_balance_and_creates_movement(self):
+        movement = record_inbound_stock(self.first_store, self.first_stock.product, "3.000", "Reposição", self.manager)
+
+        self.first_stock.refresh_from_db()
+        self.assertEqual(self.first_stock.quantity, Decimal("8.000"))
+        self.assertEqual(movement.movement_type, StockMovement.MovementType.INBOUND)
+        self.assertEqual(movement.balance_after, Decimal("8.000"))
+        self.assertEqual(movement.reason, "Reposição")
