@@ -207,6 +207,9 @@ except admin.sites.NotRegistered:
 class UserAdmin(DjangoUserAdmin, ModelAdmin):
     add_form = ManagedUserCreationForm
     change_form = ManagedUserChangeForm
+    add_fieldsets = (
+        (None, {"classes": ("wide",), "fields": ("username", "password1", "password2")}),
+    )
     change_form_show_cancel_button = True
     list_display = ["username", "first_name", "last_name", "email", "profile_role", "profile_stores", "is_active"]
     list_editable = ["is_active"]
@@ -255,10 +258,11 @@ class UserAdmin(DjangoUserAdmin, ModelAdmin):
         return ("last_login", "date_joined", "password")
 
     def get_form(self, request, obj=None, change=False, **kwargs):
-        if not request.user.is_superuser:
+        if request.user.is_superuser:
+            if obj is None:
+                kwargs["form"] = UserCreationForm
+        else:
             kwargs["form"] = self.add_form if obj is None else self.change_form
-        if not request.user.is_superuser and obj is None:
-            kwargs["form"] = self.add_form
         form_class = super().get_form(request, obj, **kwargs)
         if request.user.is_superuser:
             return form_class
