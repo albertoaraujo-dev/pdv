@@ -2,6 +2,11 @@ from django.contrib import admin
 from django.contrib.auth.admin import GroupAdmin as DjangoGroupAdmin
 from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
+from django.contrib.auth import logout
+from django.conf import settings
+from django.http import HttpResponseRedirect
+from django.views.decorators.cache import never_cache
+from django.views.decorators.csrf import csrf_protect
 from unfold.admin import ModelAdmin
 from unfold.forms import AuthenticationForm
 
@@ -45,6 +50,16 @@ admin.site.empty_value_display = "Não informado"
 admin.site.site_header = "PDV Final"
 admin.site.site_title = "PDV Final"
 admin.site.index_title = "Painel administrativo"
+
+
+@never_cache
+@csrf_protect
+def admin_logout(request, extra_context=None):
+    logout(request)
+    return HttpResponseRedirect(settings.FRONTEND_URL)
+
+
+admin.site.logout = admin_logout
 
 
 def localized_admin_reason(reason):

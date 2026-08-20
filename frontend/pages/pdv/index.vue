@@ -186,7 +186,7 @@ async function logout() {
       }
     })
   } finally {
-    await navigateTo('/login?next=/pdv', { external: true })
+    await navigateTo('/', { external: true })
   }
 }
 

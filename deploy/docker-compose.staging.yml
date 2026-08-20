@@ -42,6 +42,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
       DB_HOST: postgres
       DB_PORT: "5432"
+      FRONTEND_URL: ${FRONTEND_URL:-https://ligara.online}
       REDIS_URL: redis://redis:6379/0
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS is required}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-False}

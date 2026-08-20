@@ -373,9 +373,11 @@ class SessionAuthTests(TestCase):
             HTTP_X_CSRFTOKEN=self.client.cookies["csrftoken"].value,
         )
 
-        self.client.post(reverse("admin:logout"), HTTP_X_CSRFTOKEN=self.client.cookies["csrftoken"].value)
+        logout_response = self.client.post(reverse("admin:logout"), HTTP_X_CSRFTOKEN=self.client.cookies["csrftoken"].value)
 
         me_response = self.client.get(reverse("accounts:me"))
+        self.assertEqual(logout_response.status_code, 302)
+        self.assertEqual(logout_response["Location"], settings.FRONTEND_URL)
         self.assertEqual(me_response.status_code, 200)
         self.assertEqual(me_response.json()["username"], "operator")
 

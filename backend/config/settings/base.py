@@ -129,6 +129,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 CORS_ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000").split(",") if origin.strip()]
 CORS_ALLOW_CREDENTIALS = True
 CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in os.getenv("CSRF_TRUSTED_ORIGINS", "http://localhost:3000").split(",") if origin.strip()]
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
 TRUST_X_FORWARDED_FOR = env_bool("TRUST_X_FORWARDED_FOR", False)
 
 SESSION_COOKIE_HTTPONLY = True
@@ -166,7 +167,7 @@ UNFOLD = {
     "SITE_HEADER": "PDV Final",
     "SITE_SUBHEADER": "Gestão da plataforma",
     "SITE_SYMBOL": "storefront",
-    "SITE_URL": "/admin/",
+    "SITE_URL": FRONTEND_URL,
     "SHOW_HISTORY": True,
     "SHOW_VIEW_ON_SITE": False,
     "SHOW_BACK_BUTTON": False,
