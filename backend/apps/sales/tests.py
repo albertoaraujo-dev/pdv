@@ -9,6 +9,7 @@ from rest_framework.test import APIClient
 from apps.sales.admin import SaleAdmin, SaleItemAdmin
 from apps.catalog.models import Category, Product, Unit
 from apps.tenants.models import Organization, Store, UserProfile, UserStoreAccess
+from apps.inventory.models import Stock, StockMovement
 
 from .models import Sale, SaleItem
 
@@ -24,6 +25,8 @@ class SalesApiTests(TestCase):
         self.unit = Unit.objects.create(organization=self.first_org, name="Unidade", symbol="UN")
         self.product = Product.objects.create(organization=self.first_org, category=self.category, unit=self.unit, name="Água", sku="AGUA-001", price="3.50")
         self.other_product = Product.objects.create(organization=self.first_org, category=self.category, unit=self.unit, name="Suco", sku="SUCO-001", price="5.00")
+        Stock.objects.create(organization=self.first_org, store=self.first_store, product=self.product, quantity="10.000")
+        Stock.objects.create(organization=self.first_org, store=self.first_store, product=self.other_product, quantity="10.000")
         self.inactive_product = Product.objects.create(organization=self.first_org, category=self.category, unit=self.unit, name="Antigo", sku="OLD-001", price="2.00", is_active=False)
         self.second_category = Category.objects.create(organization=self.second_org, name="Lanches")
         self.second_unit = Unit.objects.create(organization=self.second_org, name="Unidade", symbol="UN2")
@@ -69,6 +72,9 @@ class SalesApiTests(TestCase):
         self.assertEqual(sale.amount_received, Decimal("20.00"))
         self.assertEqual(sale.change_amount, Decimal("8.00"))
         self.assertEqual(SaleItem.objects.count(), 2)
+        self.assertEqual(Stock.objects.get(product=self.product).quantity, Decimal("8.000"))
+        self.assertEqual(Stock.objects.get(product=self.other_product).quantity, Decimal("9.000"))
+        self.assertEqual(StockMovement.objects.count(), 2)
         self.assertEqual(response.json()["total_amount"], "12.00")
         self.assertEqual(response.json()["payment_method_label"], "Dinheiro")
         self.assertEqual(response.json()["change_amount"], "8.00")
@@ -129,6 +135,26 @@ class SalesApiTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["errors"]["amount_received"], ["O valor recebido não pode ser menor que o total da venda."])
         self.assertFalse(Sale.objects.exists())
+
+    def test_sale_rejects_insufficient_stock_without_persisting_sale(self):
+        self.client.force_authenticate(self.operator)
+        Stock.objects.filter(product=self.product).update(quantity="0.000")
+
+        response = self.client.post(
+            reverse("sale-list"),
+            {
+                "store": self.first_store.id,
+                "payment_method": Sale.PaymentMethod.CASH,
+                "amount_received": "3.50",
+                "items": [{"product": self.product.id, "quantity": "1.000"}],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["errors"]["items"], "Estoque insuficiente para Água. Disponível: 0.000.")
+        self.assertFalse(Sale.objects.exists())
+        self.assertFalse(StockMovement.objects.exists())
 
     def test_sale_copies_product_price_and_identity(self):
         self.client.force_authenticate(self.operator)

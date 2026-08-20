@@ -5,6 +5,7 @@ from rest_framework import serializers
 
 from apps.accounts.policies import get_allowed_stores
 from apps.catalog.models import Product
+from apps.inventory.services import InsufficientStockError, deduct_stock_for_sale
 
 from .models import Sale, SaleItem
 
@@ -129,6 +130,10 @@ class SaleCreateSerializer(serializers.ModelSerializer):
                 unit_price=product.price,
                 line_total=line_total,
             )
+        try:
+            deduct_stock_for_sale(sale, sale.items.select_related("product"), request.user)
+        except InsufficientStockError as exc:
+            raise serializers.ValidationError({"items": str(exc)}) from exc
         sale.total_amount = total
         sale.save(update_fields=["total_amount", "updated_at"])
         return sale
