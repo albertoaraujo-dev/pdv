@@ -118,6 +118,32 @@ class SalesApiTests(TestCase):
         self.assertEqual(Sale.objects.count(), 1)
         self.assertEqual(SaleItem.objects.count(), 1)
 
+    def test_sale_cancel_reverses_stock_and_is_idempotent(self):
+        self.client.force_authenticate(self.operator)
+        create_response = self.client.post(
+            reverse("sale-list"),
+            {
+                "store": self.first_store.id,
+                "payment_method": Sale.PaymentMethod.CASH,
+                "amount_received": "10.00",
+                "items": [{"product": self.product.id, "quantity": "2.000"}],
+            },
+            format="json",
+        )
+        sale = Sale.objects.get(pk=create_response.json()["id"])
+        stock_before_cancel = Stock.objects.get(product=self.product).quantity
+
+        cancel_response = self.client.post(reverse("sale-cancel", kwargs={"pk": sale.pk}), format="json")
+        repeat_response = self.client.post(reverse("sale-cancel", kwargs={"pk": sale.pk}), format="json")
+
+        sale.refresh_from_db()
+        self.assertEqual(cancel_response.status_code, 200, cancel_response.json())
+        self.assertEqual(repeat_response.status_code, 200, repeat_response.json())
+        self.assertEqual(sale.status, Sale.Status.CANCELLED)
+        self.assertEqual(Stock.objects.get(product=self.product).quantity, stock_before_cancel + Decimal("2.000"))
+        self.assertEqual(StockMovement.objects.filter(movement_type=StockMovement.MovementType.SALE_REVERSAL).count(), 1)
+        self.assertEqual(cancel_response.json()["status"], Sale.Status.CANCELLED)
+
     def test_sale_rejects_amount_received_lower_than_total(self):
         self.client.force_authenticate(self.operator)
 

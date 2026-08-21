@@ -10,6 +10,7 @@ from unfold.widgets import UnfoldAdminTextInputWidget
 from apps.catalog.admin import BooleanRadioFilter, CatalogStatusActionsMixin, CategoryAdmin, ProductAdmin, SimpleCatalogSaveActionsMixin, TenantCategoryFilter, TenantUnitFilter, UnitAdmin, is_product_relation_autocomplete, product_count_message
 from apps.catalog.models import Category, Product, Unit
 from apps.tenants.models import Organization, Store, UserProfile, UserStoreAccess
+from apps.inventory.models import Stock
 
 
 class CatalogModelTests(TestCase):
@@ -678,6 +679,25 @@ class CatalogApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["count"], 2)
         self.assertEqual([product["id"] for product in self.results(response)], [self.first_product.id, self.other_first_product.id])
+
+    def test_product_list_returns_stock_for_selected_store(self):
+        Stock.objects.create(organization=self.first_org, store=self.first_store, product=self.first_product, quantity="7.000")
+        self.client.force_authenticate(self.operator)
+
+        response = self.client.get(reverse("product-list"), {"store": self.first_store.id})
+
+        products = {product["id"]: product for product in self.results(response)}
+        self.assertEqual(products[self.first_product.id]["stock_quantity"], "7.000")
+        self.assertEqual(products[self.other_first_product.id]["stock_quantity"], "0.000")
+
+    def test_product_list_rejects_store_outside_user_scope(self):
+        other_store = Store.objects.create(organization=self.second_org, name="Filial", code="F01")
+        self.client.force_authenticate(self.operator)
+
+        response = self.client.get(reverse("product-list"), {"store": other_store.id})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["count"], 0)
 
     def test_product_detail_outside_user_organization_returns_not_found(self):
         self.client.force_authenticate(self.operator)

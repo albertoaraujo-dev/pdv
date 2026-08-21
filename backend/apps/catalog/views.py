@@ -1,7 +1,9 @@
-from django.db.models import Q
+from django.db.models import Prefetch, Q
 from rest_framework import permissions, viewsets
 
-from apps.accounts.policies import can_access_admin, can_access_pos, get_user_organization, is_inactive_for_login
+from apps.accounts.policies import can_access_admin, can_access_pos, get_allowed_stores, get_user_organization, is_inactive_for_login
+from apps.inventory.models import Stock
+from apps.tenants.models import Store
 
 from .models import Category, Product, Unit
 from .serializers import CategorySerializer, ProductSerializer, UnitSerializer
@@ -61,4 +63,19 @@ class ProductViewSet(TenantCatalogViewSet):
             queryset = queryset.filter(barcode__iexact=barcode)
         if category:
             queryset = queryset.filter(category_id=category)
+        store_id = self.request.query_params.get("store", "").strip()
+        if store_id:
+            allowed_stores = Store.objects.filter(pk=store_id)
+            user = self.request.user
+            if not user.is_superuser:
+                allowed_stores = allowed_stores.filter(pk__in=get_allowed_stores(user).values("pk"))
+            if not allowed_stores.exists():
+                return queryset.none()
+            queryset = queryset.prefetch_related(
+                Prefetch(
+                    "stock_balances",
+                    queryset=Stock.objects.filter(store_id=store_id),
+                    to_attr="selected_store_stock",
+                )
+            )
         return queryset
