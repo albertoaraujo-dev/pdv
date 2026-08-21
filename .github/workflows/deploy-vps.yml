@@ -24,7 +24,7 @@ jobs:
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
-          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_SSH_KEY_B64: ${{ secrets.VPS_SSH_KEY_B64 }}
           VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
           VPS_APP_DIR: ${{ secrets.VPS_APP_DIR }}
           DEPLOY_SHA: ${{ github.sha }}
@@ -33,13 +33,13 @@ jobs:
 
           test -n "$VPS_HOST"
           test -n "$VPS_USER"
-          test -n "$VPS_SSH_KEY"
+          test -n "$VPS_SSH_KEY_B64"
           test -n "$VPS_KNOWN_HOSTS"
           test -n "$VPS_APP_DIR"
 
           install -m 700 -d "$HOME/.ssh"
           install -m 600 /dev/null "$HOME/.ssh/vps_deploy_key"
-          printf '%s\n' "$VPS_SSH_KEY" > "$HOME/.ssh/vps_deploy_key"
+          printf '%s' "$VPS_SSH_KEY_B64" | base64 --decode > "$HOME/.ssh/vps_deploy_key"
           printf '%s\n' "$VPS_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
 
           ssh -i "$HOME/.ssh/vps_deploy_key" \

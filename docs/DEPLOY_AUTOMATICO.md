@@ -11,8 +11,8 @@ Configure estes secrets no ambiente `production` do repositorio:
 - `VPS_HOST`: `187.127.59.172`
 - `VPS_USER`: usuario SSH, normalmente `root` nesta VPS
 - `VPS_APP_DIR`: `/opt/pdv`
-- `VPS_SSH_KEY`: chave privada SSH exclusiva para o GitHub Actions, sem
-  passphrase
+- `VPS_SSH_KEY_B64`: chave privada SSH exclusiva para o GitHub Actions,
+  codificada em Base64 e sem passphrase
 - `VPS_KNOWN_HOSTS`: saida de `ssh-keyscan -H 187.127.59.172`
 
 Nao use a chave pessoal de desenvolvimento. Crie uma chave exclusiva para o
@@ -38,6 +38,13 @@ cd /opt/pdv
 git remote -v
 git status
 test -f deploy/.env.staging
+```
+
+Para gerar e cadastrar a chave em Base64 no PowerShell:
+
+```powershell
+$keyB64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes("$env:TEMP\pdv-actions_ed25519"))
+gh secret set VPS_SSH_KEY_B64 --env production --body $keyB64
 ```
 
 Depois de configurar os secrets, use **Run workflow** para o primeiro deploy.
