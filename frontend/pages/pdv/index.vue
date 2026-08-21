@@ -22,6 +22,7 @@ type Product = {
   price: string
   category: { name: string }
   unit: { symbol: string }
+  stock_quantity: string | null
 }
 
 type PaginatedResponse<T> = {
@@ -105,6 +106,9 @@ const productUrl = computed(() => {
   if (productQuery.value) {
     params.set('q', productQuery.value)
   }
+  if (selectedStoreId.value) {
+    params.set('store', String(selectedStoreId.value))
+  }
   const query = params.toString()
   return `${apiBase}/api/catalog/products/${query ? `?${query}` : ''}`
 })
@@ -112,7 +116,8 @@ const productUrl = computed(() => {
 const { data: products, pending: isLoadingProducts, refresh: refreshProducts } = await useFetch<PaginatedResponse<Product>>(productUrl, {
   credentials: 'include',
   server: false,
-  watch: [productUrl]
+  immediate: false,
+  watch: false
 })
 
 let searchTimeout: ReturnType<typeof setTimeout> | undefined
@@ -129,9 +134,23 @@ function focusSearch() {
   })
 }
 
-watch(user, (value) => {
+watch(user, async (value) => {
   if (!selectedStoreId.value && value?.stores.length === 1) {
     selectedStoreId.value = value.stores[0].id
+    await nextTick()
+    await refreshProducts()
+  }
+}, { immediate: true })
+
+watch(selectedStoreId, async (value, previousValue) => {
+  if (previousValue !== null && value !== previousValue && cartItems.value.length) {
+    cartItems.value = []
+    saleError.value = ''
+    saleSuccess.value = ''
+    lastSale.value = null
+  }
+  if (value) {
+    await refreshProducts()
   }
 }, { immediate: true })
 
@@ -142,6 +161,9 @@ watch(search, (value) => {
   }
   searchTimeout = setTimeout(() => {
     productQuery.value = value.trim()
+    if (selectedStoreId.value) {
+      refreshProducts()
+    }
   }, 250)
 })
 
@@ -194,6 +216,10 @@ function addToCart(product: Product) {
   if (isClosingSale.value) {
     return
   }
+  if (product.stock_quantity !== null && Number(product.stock_quantity) <= 0) {
+    saleError.value = `Produto sem estoque na filial selecionada: ${product.name}.`
+    return
+  }
 
   saleError.value = ''
   saleSuccess.value = ''
@@ -227,6 +253,9 @@ async function addSearchResultToCart() {
   try {
     productQuery.value = value
     const params = new URLSearchParams({ q: value })
+    if (selectedStoreId.value) {
+      params.set('store', String(selectedStoreId.value))
+    }
     const searchResults = await $fetch<PaginatedResponse<Product>>(`${config.public.apiBase}/api/catalog/products/?${params.toString()}`, {
       credentials: 'include'
     })
@@ -252,6 +281,17 @@ async function addSearchResultToCart() {
     isAddingSearchResult.value = false
     focusSearch()
   }
+}
+
+function isOutOfStock(product: Product) {
+  return product.stock_quantity !== null && Number(product.stock_quantity) <= 0
+}
+
+function stockLabel(product: Product) {
+  if (product.stock_quantity === null) {
+    return 'Selecione uma filial'
+  }
+  return isOutOfStock(product) ? 'Sem estoque nesta filial' : `Estoque: ${Number(product.stock_quantity).toLocaleString('pt-BR')}`
 }
 
 function decrementItem(productId: number) {
@@ -308,8 +348,12 @@ function updateItemQuantity(productId: number, value: string | number, input?: H
 }
 
 function getFetchErrorMessage(error: unknown) {
-  if (typeof error === 'object' && error && 'data' in error) {
-    const data = (error as { data?: { detail?: string, errors?: Record<string, string[] | string> } }).data
+  if (typeof error === 'object' && error) {
+    const fetchError = error as {
+      data?: { detail?: string, errors?: Record<string, string[] | string> }
+      response?: { _data?: { detail?: string, errors?: Record<string, string[] | string> } }
+    }
+    const data = fetchError.data || fetchError.response?._data
     if (data?.detail) {
       return data.detail
     }
@@ -464,15 +508,16 @@ function money(value: number | string) {
         <p v-else-if="!products?.results.length" class="muted">Nenhum produto encontrado.</p>
 
         <ul v-else class="product-list">
-          <li v-for="product in products.results" :key="product.id">
+          <li v-for="product in products.results" :key="product.id" :class="{ 'product-out-of-stock': isOutOfStock(product) }">
             <div>
               <strong>{{ product.name }}</strong>
               <small><span v-if="product.sku">SKU {{ product.sku }} · </span>{{ product.category.name }} · {{ product.unit.symbol }}</small>
+              <small class="product-stock" :class="{ 'product-stock-empty': isOutOfStock(product) }">{{ stockLabel(product) }}</small>
             </div>
             <div class="product-actions">
               <span>{{ money(product.price) }}</span>
-              <button type="button" :disabled="isClosingSale" @click="addToCart(product)">
-                Adicionar
+              <button type="button" :disabled="isClosingSale || isOutOfStock(product) || !selectedStoreId" @click="addToCart(product)">
+                {{ isOutOfStock(product) ? 'Indisponível' : 'Adicionar' }}
               </button>
             </div>
           </li>
@@ -776,6 +821,11 @@ select {
   background: #f8fafc;
 }
 
+.product-list li.product-out-of-stock {
+  border-color: #fecaca;
+  background: #fff7f7;
+}
+
 .product-list small,
 .muted {
   color: #64748b;
@@ -788,6 +838,16 @@ select {
 
 .product-list strong {
   margin-bottom: 4px;
+}
+
+.product-stock {
+  margin-top: 6px;
+  color: #166534;
+  font-weight: 800;
+}
+
+.product-stock-empty {
+  color: #b91c1c;
 }
 
 .product-actions,
