@@ -8,8 +8,8 @@ const config = useRuntimeConfig()
       <p class="eyebrow">Base local ativa</p>
       <h1>{{ config.public.appName }}</h1>
       <p class="lead">ERP + PDV com Nuxt 4, Django, PostgreSQL e Redis.</p>
-      <div class="links">
-        <a href="http://localhost:8000/health/">Health backend</a>
+        <div class="links">
+          <a :href="`${config.public.apiBase}/health/`">Health backend</a>
         <NuxtLink to="/pdv">Abrir PDV</NuxtLink>
         <a :href="`${config.public.apiBase}/admin/`">Abrir painel</a>
       </div>
