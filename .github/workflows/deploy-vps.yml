@@ -1,0 +1,63 @@
+name: Deploy VPS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Deploy over SSH
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VPS_APP_DIR: ${{ secrets.VPS_APP_DIR }}
+          DEPLOY_SHA: ${{ github.sha }}
+        run: |
+          set -eu
+
+          test -n "$VPS_HOST"
+          test -n "$VPS_USER"
+          test -n "$VPS_SSH_KEY"
+          test -n "$VPS_KNOWN_HOSTS"
+          test -n "$VPS_APP_DIR"
+
+          install -m 700 -d "$HOME/.ssh"
+          install -m 600 /dev/null "$HOME/.ssh/vps_deploy_key"
+          printf '%s\n' "$VPS_SSH_KEY" > "$HOME/.ssh/vps_deploy_key"
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+
+          ssh -i "$HOME/.ssh/vps_deploy_key" \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            "$VPS_USER@$VPS_HOST" \
+            "DEPLOY_SHA='$DEPLOY_SHA' VPS_APP_DIR='$VPS_APP_DIR' sh -s" <<'REMOTE_SCRIPT'
+          set -eu
+
+          cd "$VPS_APP_DIR"
+          git fetch --prune origin main
+          git checkout --force main
+          git reset --hard "$DEPLOY_SHA"
+
+          cd deploy
+          docker compose --env-file .env.staging -f docker-compose.staging.yml build --pull backend migrate frontend
+          docker compose --env-file .env.staging -f docker-compose.staging.yml run --rm migrate
+          docker compose --env-file .env.staging -f docker-compose.staging.yml up -d backend frontend proxy
+          docker compose --env-file .env.staging -f docker-compose.staging.yml ps
+          curl --fail --silent --show-error https://ligara.online/health/ >/dev/null
+          REMOTE_SCRIPT
