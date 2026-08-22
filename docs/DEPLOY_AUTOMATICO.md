@@ -96,3 +96,10 @@ gh secret set VPS_SSH_KEY_B64 --env production --body $keyB64
 ```
 
 Depois de configurar os secrets, use **Run workflow** para o primeiro deploy.
+
+## Monitoramento
+
+O workflow `.github/workflows/monitor-vps.yml` executa a cada 15 minutos e
+verifica o backend em `/health/` e a pagina inicial pelo dominio publico.
+Tambem pode ser executado manualmente. Falhas aparecem no GitHub Actions e
+podem gerar notificacoes conforme as preferencias da conta GitHub.
