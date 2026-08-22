@@ -33,11 +33,13 @@ executa `migrate` e `collectstatic`, recria os servicos e valida
 ## Backup e restore
 
 Os backups ficam em `/opt/pdv/backups`, fora do Git, com permissao restrita.
-Execute manualmente na VPS para criar um backup:
+O banco e o volume de midia sao copiados separadamente, ambos com retencao
+padrao de 14 dias. Execute manualmente na VPS:
 
 ```bash
 cd /opt/pdv
 sh ./scripts/backup-db.sh
+sh ./scripts/backup-media.sh
 ```
 
 Na VPS, mantenha tambem um backup diario fora do ciclo de deploy:
@@ -45,7 +47,8 @@ Na VPS, mantenha tambem um backup diario fora do ciclo de deploy:
 ```bash
 (crontab -l 2>/dev/null | grep -v 'pdv-daily-backup'; \
   echo '# pdv-daily-backup'; \
-  echo '15 3 * * * cd /opt/pdv && /bin/sh ./scripts/backup-db.sh >> /var/log/pdv-backup.log 2>&1') | crontab -
+  echo '15 3 * * * cd /opt/pdv && /bin/sh ./scripts/backup-db.sh >> /var/log/pdv-backup.log 2>&1'; \
+  echo '30 3 * * * cd /opt/pdv && /bin/sh ./scripts/backup-media.sh >> /var/log/pdv-backup.log 2>&1') | crontab -
 ```
 
 O horario e UTC. Verifique a rotina com `crontab -l` e consulte
