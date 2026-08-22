@@ -60,7 +60,7 @@ jobs:
           git reset --hard "$DEPLOY_REF"
 
           cd deploy
-          ../scripts/backup-db.sh
+          sh ../scripts/backup-db.sh
           docker compose --env-file .env.staging -f docker-compose.staging.yml build --pull backend migrate frontend
           docker compose --env-file .env.staging -f docker-compose.staging.yml run --rm migrate
           docker compose --env-file .env.staging -f docker-compose.staging.yml up -d backend frontend proxy

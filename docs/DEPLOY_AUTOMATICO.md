@@ -37,14 +37,14 @@ Execute manualmente na VPS para criar um backup:
 
 ```bash
 cd /opt/pdv
-./scripts/backup-db.sh
+sh ./scripts/backup-db.sh
 ```
 
 Para restaurar, informe explicitamente a confirmacao destrutiva:
 
 ```bash
 cd /opt/pdv
-CONFIRM_RESTORE=YES ./scripts/restore-db.sh /opt/pdv/backups/pdv-YYYYmmddTHHMMSSZ.dump
+CONFIRM_RESTORE=YES sh ./scripts/restore-db.sh /opt/pdv/backups/pdv-YYYYmmddTHHMMSSZ.dump
 ```
 
 O restore para backend, frontend e proxy durante a operacao e os inicia
