@@ -26,8 +26,39 @@ deploy e instale a chave publica em `/root/.ssh/authorized_keys` da VPS.
 - O usuario SSH deve conseguir executar Docker sem prompt interativo.
 
 O deploy atualiza o clone para o commit exato que disparou o workflow, constroi
-backend, migration e frontend, executa `migrate` e `collectstatic`, recria os
-servicos e valida `https://ligara.online/health/`.
+backend, migration e frontend, cria um backup PostgreSQL com retencao de 14 dias,
+executa `migrate` e `collectstatic`, recria os servicos e valida
+`https://ligara.online/health/`.
+
+## Backup e restore
+
+Os backups ficam em `/opt/pdv/backups`, fora do Git, com permissao restrita.
+Execute manualmente na VPS para criar um backup:
+
+```bash
+cd /opt/pdv
+./scripts/backup-db.sh
+```
+
+Para restaurar, informe explicitamente a confirmacao destrutiva:
+
+```bash
+cd /opt/pdv
+CONFIRM_RESTORE=YES ./scripts/restore-db.sh /opt/pdv/backups/pdv-YYYYmmddTHHMMSSZ.dump
+```
+
+O restore para backend, frontend e proxy durante a operacao e os inicia
+novamente ao final. Valide o healthcheck e o login depois do restore.
+
+## Rollback
+
+O workflow manual aceita um commit ou tag no campo `deploy_ref`. Para
+voltar o codigo, abra **Actions > Deploy VPS > Run workflow** e informe o commit
+anterior. O deploy cria um backup antes de executar migrations.
+
+Restore de banco e rollback de codigo sao operacoes separadas. Se o release
+anterior exigir um schema antigo, restaure primeiro um backup compativel e so
+depois execute o rollback do codigo.
 
 ## Primeira configuracao
 

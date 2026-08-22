@@ -5,6 +5,11 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      deploy_ref:
+        description: Commit or tag to deploy
+        required: true
+        default: main
 
 permissions:
   contents: read
@@ -27,7 +32,7 @@ jobs:
           VPS_SSH_KEY_B64: ${{ secrets.VPS_SSH_KEY_B64 }}
           VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
           VPS_APP_DIR: ${{ secrets.VPS_APP_DIR }}
-          DEPLOY_SHA: ${{ github.sha }}
+          DEPLOY_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_ref || github.sha }}
         run: |
           set -eu
 
@@ -46,15 +51,16 @@ jobs:
             -o IdentitiesOnly=yes \
             -o BatchMode=yes \
             "$VPS_USER@$VPS_HOST" \
-            "DEPLOY_SHA='$DEPLOY_SHA' VPS_APP_DIR='$VPS_APP_DIR' sh -s" <<'REMOTE_SCRIPT'
+            "DEPLOY_REF='$DEPLOY_REF' VPS_APP_DIR='$VPS_APP_DIR' sh -s" <<'REMOTE_SCRIPT'
           set -eu
 
           cd "$VPS_APP_DIR"
           git fetch --prune origin main
           git checkout --force main
-          git reset --hard "$DEPLOY_SHA"
+          git reset --hard "$DEPLOY_REF"
 
           cd deploy
+          ../scripts/backup-db.sh
           docker compose --env-file .env.staging -f docker-compose.staging.yml build --pull backend migrate frontend
           docker compose --env-file .env.staging -f docker-compose.staging.yml run --rm migrate
           docker compose --env-file .env.staging -f docker-compose.staging.yml up -d backend frontend proxy
