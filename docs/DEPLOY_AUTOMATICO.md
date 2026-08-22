@@ -61,6 +61,9 @@ CONFIRM_RESTORE=YES sh ./scripts/restore-db.sh /opt/pdv/backups/pdv-YYYYmmddTHHM
 O restore para backend, frontend e proxy durante a operacao e os inicia
 novamente ao final. Valide o healthcheck e o login depois do restore.
 
+Restore validado em banco temporario na VPS: o dump foi restaurado, foram
+encontradas 23 tabelas publicas e o banco de teste foi removido ao final.
+
 ## Rollback
 
 O workflow manual aceita um commit ou tag no campo `deploy_ref`. Para
