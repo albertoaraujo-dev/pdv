@@ -78,12 +78,12 @@ docker compose restart frontend
 
 ## Observações
 
-- Scripts de `backup-db.sh` e `restore-db.sh` ainda são placeholders locais, não rotina de produção.
+- Scripts de `backup-db.sh` e `restore-db.sh` executam backup custom do PostgreSQL e restore protegido por confirmação.
 - `backend/config/settings/production.py` ainda é base mínima; produção real exigirá configuração de proxy, HTTPS, secrets, HSTS e backup.
 - Estoque transacional ainda não foi implementado.
 - Pix automatizado, cartão integrado, TEF/maquininha, impressão física e dispositivos ainda não foram implementados.
 - O cartão externo e o Pix manual existentes são apenas registros operacionais, sem autorização, webhook ou conciliação automática.
-- Deploy de produção ainda não está pronto; a próxima etapa planejada é um deploy inicial de aprendizado/staging em VPS.
+- Deploy automático para a VPS está configurado via GitHub Actions, com backup antes de cada deploy, rollback manual por commit/tag e healthcheck público.
 
 ## Estrutura
 

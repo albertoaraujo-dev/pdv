@@ -40,6 +40,17 @@ cd /opt/pdv
 sh ./scripts/backup-db.sh
 ```
 
+Na VPS, mantenha tambem um backup diario fora do ciclo de deploy:
+
+```bash
+(crontab -l 2>/dev/null | grep -v 'pdv-daily-backup'; \
+  echo '# pdv-daily-backup'; \
+  echo '15 3 * * * cd /opt/pdv && /bin/sh ./scripts/backup-db.sh >> /var/log/pdv-backup.log 2>&1') | crontab -
+```
+
+O horario e UTC. Verifique a rotina com `crontab -l` e consulte
+`/var/log/pdv-backup.log` quando necessario.
+
 Para restaurar, informe explicitamente a confirmacao destrutiva:
 
 ```bash
