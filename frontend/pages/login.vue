@@ -104,6 +104,7 @@ async function submitLogin() {
       <button type="submit" :disabled="isSubmitting">
         {{ isSubmitting ? 'Entrando...' : 'Entrar' }}
       </button>
+      <NuxtLink class="reset-link" to="/redefinir-senha">Esqueci minha senha</NuxtLink>
     </form>
   </main>
 </template>
@@ -173,6 +174,12 @@ button {
 button:disabled {
   cursor: wait;
   opacity: 0.7;
+}
+
+.reset-link {
+  color: #bae6fd;
+  text-align: center;
+  text-decoration: none;
 }
 
 .error {

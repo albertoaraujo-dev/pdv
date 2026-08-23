@@ -1,10 +1,16 @@
 import json
 
+from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib.auth import password_validation, update_session_auth_hash
+from django.contrib.auth.tokens import default_token_generator
 from django.core.exceptions import ValidationError
+from django.core.mail import send_mail
+from django.db.models import Q
 from django.http import JsonResponse
 from django.middleware.csrf import get_token
+from django.utils.encoding import force_bytes, force_str
+from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST
 
@@ -147,4 +153,62 @@ def change_password(request):
         profile.save(update_fields=["must_change_password"])
     update_session_auth_hash(request, request.user)
     record_auth_event(request, request.user, AuthEvent.EventType.PASSWORD_CHANGE, "Senha alterada.")
+    return JsonResponse({"status": "ok"})
+
+
+@csrf_protect
+@require_POST
+def password_reset_request(request):
+    payload, error_response = parse_json_request(request)
+    if error_response:
+        return error_response
+
+    identifier = str(payload.get("identifier", "")).strip()
+    user = get_user_model().objects.filter(is_active=True).filter(
+        Q(username__iexact=identifier) | Q(email__iexact=identifier)
+    ).first()
+    if user and user.email:
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        token = default_token_generator.make_token(user)
+        reset_url = f"{settings.FRONTEND_URL}/redefinir-senha?uid={uid}&token={token}"
+        send_mail(
+            "Redefinição de senha - PDV Final",
+            f"Use este link para redefinir sua senha: {reset_url}",
+            settings.DEFAULT_FROM_EMAIL,
+            [user.email],
+            fail_silently=True,
+        )
+    return JsonResponse({"status": "ok"})
+
+
+@csrf_protect
+@require_POST
+def password_reset_confirm(request):
+    payload, error_response = parse_json_request(request)
+    if error_response:
+        return error_response
+
+    try:
+        user_id = force_str(urlsafe_base64_decode(payload.get("uid", "")))
+        user = get_user_model().objects.get(pk=user_id, is_active=True)
+    except (TypeError, ValueError, OverflowError, get_user_model().DoesNotExist):
+        return JsonResponse({"detail": "Link de redefinição inválido ou expirado."}, status=400)
+
+    if not default_token_generator.check_token(user, payload.get("token", "")):
+        return JsonResponse({"detail": "Link de redefinição inválido ou expirado."}, status=400)
+
+    new_password = payload.get("new_password", "")
+    if new_password != payload.get("new_password_confirm", ""):
+        return JsonResponse({"detail": "A confirmação da nova senha não confere."}, status=400)
+    try:
+        password_validation.validate_password(new_password, user)
+    except ValidationError as error:
+        return JsonResponse({"detail": " ".join(error.messages)}, status=400)
+
+    user.set_password(new_password)
+    user.save(update_fields=["password"])
+    profile = getattr(user, "profile", None)
+    if profile and profile.must_change_password:
+        profile.must_change_password = False
+        profile.save(update_fields=["must_change_password"])
     return JsonResponse({"status": "ok"})

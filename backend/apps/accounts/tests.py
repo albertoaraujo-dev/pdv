@@ -1,6 +1,9 @@
+import re
+
 from django.contrib.auth import get_user_model
 from django.contrib import admin
 from django.conf import settings
+from django.core import mail
 from django.test import Client, RequestFactory, TestCase, override_settings
 from django.urls import reverse
 
@@ -818,3 +821,82 @@ class AdminLoginAuditTests(TestCase):
         self.assertEqual(AuthEvent.objects.get().event_type, AuthEvent.EventType.SESSION_REVOKED)
         self.assertEqual(AuthEvent.objects.get().user, self.manager)
         self.assertEqual(AuthEvent.objects.get().reason, "Sessão do painel administrativo revogada por usuário inativo.")
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend", FRONTEND_URL="http://localhost:3000")
+class PasswordResetTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="reset-user",
+            email="reset@example.com",
+            password="Old-pass-123!",
+        )
+        self.client = Client(enforce_csrf_checks=True)
+
+    def csrf_token(self):
+        return self.client.get(reverse("accounts:csrf")).cookies["csrftoken"].value
+
+    def test_reset_request_is_generic_and_sends_email_for_matching_user(self):
+        response = self.client.post(
+            reverse("accounts:password_reset_request"),
+            data={"identifier": "reset-user"},
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=self.csrf_token(),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"status": "ok"})
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertRegex(mail.outbox[0].body, r"redefinir-senha\?uid=.*&token=.*")
+
+    def test_reset_request_does_not_reveal_unknown_user(self):
+        response = self.client.post(
+            reverse("accounts:password_reset_request"),
+            data={"identifier": "unknown-user"},
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=self.csrf_token(),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"status": "ok"})
+        self.assertEqual(mail.outbox, [])
+
+    def test_reset_confirm_changes_password_and_consumes_token(self):
+        request = self.client.post(
+            reverse("accounts:password_reset_request"),
+            data={"identifier": "reset-user"},
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=self.csrf_token(),
+        )
+        match = re.search(r"redefinir-senha\?uid=([^&]+)&token=([^\s]+)", mail.outbox[0].body)
+        self.assertIsNotNone(match)
+        uid, token = match.groups()
+
+        response = self.client.post(
+            reverse("accounts:password_reset_confirm"),
+            data={
+                "uid": uid,
+                "token": token,
+                "new_password": "New-pass-123!",
+                "new_password_confirm": "New-pass-123!",
+            },
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=self.csrf_token(),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("New-pass-123!"))
+
+        replay = self.client.post(
+            reverse("accounts:password_reset_confirm"),
+            data={
+                "uid": uid,
+                "token": token,
+                "new_password": "Another-pass-123!",
+                "new_password_confirm": "Another-pass-123!",
+            },
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=self.csrf_token(),
+        )
+        self.assertEqual(replay.status_code, 400)
