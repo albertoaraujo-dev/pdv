@@ -9,7 +9,7 @@ GitHub Actions.
 Configure estes secrets no ambiente `production` do repositorio:
 
 - `VPS_HOST`: `187.127.59.172`
-- `VPS_USER`: usuario SSH, normalmente `root` nesta VPS
+- `VPS_USER`: `deployer`
 - `VPS_APP_DIR`: `/opt/pdv`
 - `VPS_SSH_KEY_B64`: chave privada SSH exclusiva para o GitHub Actions,
   codificada em Base64 e sem passphrase
@@ -23,7 +23,9 @@ deploy e instale a chave publica em `/root/.ssh/authorized_keys` da VPS.
 - O repositorio deve estar clonado em `/opt/pdv`.
 - O remote `origin` deve apontar para o repositorio correto.
 - `/opt/pdv/deploy/.env.staging` deve existir somente na VPS.
-- O usuario SSH deve conseguir executar Docker sem prompt interativo.
+- O usuario SSH `deployer` deve conseguir executar Docker sem prompt interativo.
+- O acesso SSH de `root` e por senha estao desabilitados; administracao usa a
+  chave pessoal no usuario `deployer`.
 
 O deploy atualiza o clone para o commit exato que disparou o workflow, constroi
 backend, migration e frontend, cria um backup PostgreSQL com retencao de 14 dias,
