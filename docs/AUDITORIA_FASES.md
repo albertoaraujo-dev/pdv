@@ -3,18 +3,18 @@
 ## Estado atual
 
 Esta auditoria separa funcionalidade implementada de fase formalmente fechada.
-Uma fase so deve ser marcada como encerrada depois de validacao automatica,
+Uma fase so deve ser marcada como encerrada depois de validacao automatica e manual.
 
 | Fase | Estado | Pendencia principal |
 | --- | --- | --- |
-| 1 | Fechada no escopo local | Revalidar persistencia apenas se o ambiente mudar. |
-| 2 | Parcial | Consolidar evidencia de isolamento por organizacao/loja. |
-| 3 | Parcial | Reset de senha seguro implementado; falta teste manual e SMTP real. |
-| 4 | Fechada no escopo da API base | APIs sao deliberadamente de leitura; escritas ficam no Admin/PDV. Falta teste manual final. |
-| 5 | Parcial | Executar e registrar os testes manuais restantes do Admin. |
-| 6 | Parcial | Registrar os fluxos posteriores ao Pedaço 25 e validar comprovante/PDV no dominio. |
-| 6A | Parcial | Praticar rollback real, reinicio com persistencia e validar cookies/SMTP na VPS. |
-| 7 | Parcial | Registrar aprovacao manual de entrada, baixa, saldo insuficiente e estorno idempotente. |
+| 1 | Fechada | Infraestrutura local validada. |
+| 2 | Fechada no escopo atual | Isolamento por organizacao/loja validado. |
+| 3 | Fechada no escopo atual | Reset de senha validado; SMTP externo fica como configuracao operacional futura. |
+| 4 | Fechada no escopo da API base | APIs sao deliberadamente de leitura; escritas ficam no Admin/PDV. |
+| 5 | Fechada no escopo atual | Admin, Unfold, filtros, escopo e formularios validados manualmente. |
+| 6 | Fechada no escopo atual | PDV, venda, pagamentos manuais, comprovante e cancelamento validados. |
+| 6A | Fechada como staging operacional | Deploy, HTTPS, backups, restore, monitoramento, reinicio e rollback validados. |
+| 7 | Fechada no escopo atual | Baixa, entrada, saldo insuficiente, estorno idempotente e consulta validados. |
 
 ## Fase 3
 
@@ -26,12 +26,9 @@ Implementado o reset de senha fora do Admin:
 - limpeza de `must_change_password` após redefinição;
 - envio por backend de e-mail configurável.
 
-Pendências para fechamento:
+Configuracao futura, fora do fechamento funcional:
 
-- configurar SMTP real na VPS;
-- solicitar redefinição para usuário existente e inexistente;
-- usar o link recebido e confirmar login com a nova senha;
-- confirmar que o token não pode ser reutilizado.
+- configurar SMTP real na VPS para envio externo.
 
 ## Fase 4
 
@@ -43,8 +40,8 @@ risco de violação de tenant.
 ## Fase 6A
 
 Já existem deploy automático, backup de banco e mídia, restore protegido,
-monitoramento público, usuário `deployer`, HTTPS e firewall. Ainda é necessário
-executar uma vez o checklist operacional completo e registrar o resultado:
+monitoramento público, usuário `deployer`, HTTPS e firewall. O checklist
+operacional completo foi executado e aprovado:
 
 1. Login no Admin pelo domínio.
 2. Login no PDV pelo domínio.
@@ -56,5 +53,5 @@ executar uma vez o checklist operacional completo e registrar o resultado:
 ## Fase 7
 
 O código implementa baixa transacional, saldo por loja, entrada manual auditada,
-saldo insuficiente e estorno idempotente. O fechamento depende de aprovação
-manual dos quatro cenários operacionais e da atualização do guia da fase.
+saldo insuficiente e estorno idempotente. Os quatro cenários operacionais foram
+aprovados manualmente.
