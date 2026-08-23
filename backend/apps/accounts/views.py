@@ -211,4 +211,5 @@ def password_reset_confirm(request):
     if profile and profile.must_change_password:
         profile.must_change_password = False
         profile.save(update_fields=["must_change_password"])
+    record_auth_event(request, user, AuthEvent.EventType.PASSWORD_RESET, "Senha redefinida por link seguro.")
     return JsonResponse({"status": "ok"})
