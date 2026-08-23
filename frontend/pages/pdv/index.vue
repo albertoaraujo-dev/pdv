@@ -633,8 +633,8 @@ function money(value: number | string) {
           <strong>{{ money(changeAmount) }}</strong>
         </div>
 
-        <div v-if="paymentMethod === 'pix_manual'" class="pix-payment-box">
-          <template v-if="selectedStore?.pix_key && pixPayload">
+        <div v-if="paymentMethod === 'pix_manual' && cartItems.length" class="pix-payment-box">
+          <template v-if="cartItems.length && selectedStore?.pix_key && pixPayload">
             <img v-if="pixQrCode" class="pix-qr-code" :src="pixQrCode" alt="QR Code Pix da venda">
             <p class="muted">Apresente o QR Code e confirme o recebimento antes de finalizar.</p>
             <button type="button" class="copy-pix-button" :disabled="isClosingSale" @click="copyPixPayload">Copiar código Pix</button>
@@ -643,7 +643,7 @@ function money(value: number | string) {
               <code class="pix-code">{{ pixPayload }}</code>
             </details>
           </template>
-          <p v-else class="sale-message sale-message-warning">Configure uma chave Pix nesta loja para exibir o QR Code.</p>
+          <p v-else-if="cartItems.length && selectedStore && !selectedStore.pix_key" class="sale-message sale-message-warning">Configure uma chave Pix nesta loja para exibir o QR Code.</p>
         </div>
       </div>
 
