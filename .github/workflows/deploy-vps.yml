@@ -57,7 +57,11 @@ jobs:
           cd "$VPS_APP_DIR"
           git fetch --prune origin main
           git checkout --force main
-          git reset --hard "$DEPLOY_REF"
+          if [ "$DEPLOY_REF" = "main" ]; then
+            git reset --hard origin/main
+          else
+            git reset --hard "$DEPLOY_REF"
+          fi
 
           cd deploy
           sh ../scripts/backup-db.sh
