@@ -122,7 +122,7 @@ class TenantAdminScopeTests(TestCase):
         self.assertEqual(
             store_admin.get_fieldsets(request, self.first_store),
             [
-                ("Dados da loja", {"fields": ["organization", "name", "code", "is_active"]}),
+                ("Dados da loja", {"fields": ["organization", "name", "code", "pix_key", "is_active"]}),
                 ("Controle", {"fields": ["created_at", "updated_at"]}),
             ],
         )

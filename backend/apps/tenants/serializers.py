@@ -13,7 +13,7 @@ class OrganizationSerializer(serializers.ModelSerializer):
 class UserStoreSerializer(serializers.ModelSerializer):
     class Meta:
         model = Store
-        fields = ["id", "name", "code", "is_active"]
+        fields = ["id", "name", "code", "pix_key", "is_active"]
 
 
 class StoreSerializer(serializers.ModelSerializer):
@@ -21,7 +21,7 @@ class StoreSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Store
-        fields = ["id", "organization", "organization_name", "name", "code", "is_active"]
+        fields = ["id", "organization", "organization_name", "name", "code", "pix_key", "is_active"]
 
 
 class UserProfileSerializer(serializers.ModelSerializer):

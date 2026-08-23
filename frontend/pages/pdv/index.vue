@@ -11,7 +11,7 @@ type AuthUser = {
     role_label: string | null
     organization_name: string | null
   }
-  stores: Array<{ id: number, name: string, code: string }>
+  stores: Array<{ id: number, name: string, code: string, pix_key: string }>
 }
 
 type Product = {
@@ -79,6 +79,7 @@ const saleError = ref('')
 const saleSuccess = ref('')
 const searchMessage = ref('')
 const lastSale = ref<Sale | null>(null)
+const pixQrCode = ref('')
 const searchInput = ref<HTMLInputElement | null>(null)
 const displayName = computed(() => user.value?.name || user.value?.username || 'Usuário')
 const storeNames = computed(() => user.value?.stores.map((store) => `${store.code} - ${store.name}`).join(', ') || 'Nenhuma loja ativa')
@@ -101,6 +102,12 @@ const paymentPendingMessage = computed(() => {
   return `O valor recebido em dinheiro ainda é menor que o total da venda. Faltam ${money(remainingCashAmount.value)}.`
 })
 const canCloseSale = computed(() => Boolean(selectedStoreId.value && cartItems.value.length && hasEnoughPayment.value && !isClosingSale.value))
+const pixPayload = computed(() => {
+  if (paymentMethod.value !== 'pix_manual' || !selectedStore.value?.pix_key || !cartTotal.value) {
+    return ''
+  }
+  return buildPixPayload(selectedStore.value.pix_key, cartTotal.value, selectedStore.value.name)
+})
 const productUrl = computed(() => {
   const params = new URLSearchParams()
   if (productQuery.value) {
@@ -187,6 +194,15 @@ watch([amountReceived, selectedStoreId], () => {
   saleError.value = ''
   saleSuccess.value = ''
 })
+
+watch(pixPayload, async (payload) => {
+  pixQrCode.value = ''
+  if (!payload || !import.meta.client) {
+    return
+  }
+  const qrcode = await import('qrcode')
+  pixQrCode.value = await qrcode.toDataURL(payload, { width: 220, margin: 1 })
+}, { immediate: true })
 
 async function logout() {
   if (isClosingSale.value) {
@@ -375,6 +391,49 @@ function createClientRequestId() {
     return globalThis.crypto.randomUUID()
   }
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+function pixField(id: string, value: string) {
+  return `${id}${String(value.length).padStart(2, '0')}${value}`
+}
+
+function normalizePixText(value: string, maxLength: number) {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9 ]/g, '').trim().slice(0, maxLength).toUpperCase()
+}
+
+function crc16(value: string) {
+  let crc = 0xFFFF
+  for (const character of value) {
+    crc ^= character.charCodeAt(0) << 8
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) & 0xFFFF : (crc << 1) & 0xFFFF
+    }
+  }
+  return crc.toString(16).toUpperCase().padStart(4, '0')
+}
+
+function buildPixPayload(key: string, amount: number, storeName: string) {
+  const merchantAccount = pixField('00', 'br.gov.bcb.pix') + pixField('01', key.trim())
+  const payload = [
+    pixField('00', '01'),
+    pixField('26', merchantAccount),
+    pixField('52', '0000'),
+    pixField('53', '986'),
+    pixField('54', amount.toFixed(2)),
+    pixField('58', 'BR'),
+    pixField('59', normalizePixText(storeName, 25) || 'PDV'),
+    pixField('60', 'BRASIL'),
+    pixField('62', pixField('05', '***')),
+  ].join('')
+  return `${payload}6304${crc16(`${payload}6304`)}`
+}
+
+async function copyPixPayload() {
+  if (!pixPayload.value) {
+    return
+  }
+  await navigator.clipboard.writeText(pixPayload.value)
+  saleSuccess.value = 'Código Pix copiado.'
 }
 
 async function closeSale() {
@@ -573,6 +632,19 @@ function money(value: number | string) {
           <span>Troco</span>
           <strong>{{ money(changeAmount) }}</strong>
         </div>
+
+        <div v-if="paymentMethod === 'pix_manual'" class="pix-payment-box">
+          <template v-if="selectedStore?.pix_key && pixPayload">
+            <img v-if="pixQrCode" class="pix-qr-code" :src="pixQrCode" alt="QR Code Pix da venda">
+            <p class="muted">Apresente o QR Code e confirme o recebimento antes de finalizar.</p>
+            <button type="button" class="copy-pix-button" :disabled="isClosingSale" @click="copyPixPayload">Copiar código Pix</button>
+            <details>
+              <summary>Mostrar código Pix</summary>
+              <code class="pix-code">{{ pixPayload }}</code>
+            </details>
+          </template>
+          <p v-else class="sale-message sale-message-warning">Configure uma chave Pix nesta loja para exibir o QR Code.</p>
+        </div>
       </div>
 
       <p v-if="isClient && selectedStore" class="muted">Loja da venda: {{ selectedStore.code }} - {{ selectedStore.name }}</p>
@@ -629,6 +701,44 @@ function money(value: number | string) {
   background: #f8fafc;
   color: #0f172a;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+.pix-payment-box {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid #bae6fd;
+  border-radius: 14px;
+  background: #f0f9ff;
+  text-align: center;
+}
+
+.pix-qr-code {
+  width: 180px;
+  height: 180px;
+  border-radius: 8px;
+  background: white;
+}
+
+.copy-pix-button {
+  border: 0;
+  border-radius: 8px;
+  padding: 9px 12px;
+  background: #0369a1;
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pix-code {
+  display: block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: #0c4a6e;
+  font-size: 0.72rem;
+  text-align: left;
 }
 
 .pos-header {

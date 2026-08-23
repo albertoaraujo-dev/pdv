@@ -31,7 +31,7 @@ def user_payload(user):
             "must_change_password": must_change_password(user),
         },
         "stores": [
-            {"id": store.id, "name": store.name, "code": store.code}
+            {"id": store.id, "name": store.name, "code": store.code, "pix_key": store.pix_key}
             for store in get_allowed_stores(user)
         ],
     }

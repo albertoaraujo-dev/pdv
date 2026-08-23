@@ -35,6 +35,7 @@ class Store(models.Model):
     organization = models.ForeignKey(Organization, on_delete=models.PROTECT, related_name="stores", verbose_name="organização")
     name = models.CharField("nome", max_length=160)
     code = models.CharField("código", max_length=32)
+    pix_key = models.CharField("chave Pix", max_length=120, blank=True)
     is_active = models.BooleanField("ativo", default=True)
     created_at = models.DateTimeField("criado em", auto_now_add=True)
     updated_at = models.DateTimeField("atualizado em", auto_now=True)
