@@ -23,6 +23,7 @@ cleanup() {
 trap cleanup EXIT
 
 docker run --rm \
+  --user "$(id -u):$(id -g)" \
   -v "$MEDIA_VOLUME:/media:ro" \
   -v "$BACKUP_DIR:/backups" \
   alpine:3.20 \
