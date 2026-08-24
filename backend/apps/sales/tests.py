@@ -1,4 +1,8 @@
 from decimal import Decimal
+import base64
+import hashlib
+import hmac
+import json
 from unittest.mock import patch
 
 from django.contrib import admin
@@ -344,6 +348,51 @@ class SalesApiTests(TestCase):
         sale.refresh_from_db()
         self.assertEqual(sale.status, Sale.Status.COMPLETED)
         self.assertEqual(Stock.objects.get(product=self.product).quantity, Decimal("10.000"))
+
+    @override_settings(ABACATEPAY_WEBHOOK_SECRET="webhook-secret")
+    def test_abacatepay_webhook_verifies_signature_and_is_idempotent(self):
+        sale = Sale.objects.create(organization=self.first_org, store=self.first_store, cashier=self.operator, total_amount="3.50")
+        payment = SalePayment.objects.create(
+            sale=sale,
+            external_id="sale-webhook",
+            provider_id="pix_char_webhook",
+            amount_cents=350,
+        )
+        payload = {
+            "id": "log_webhook_1",
+            "event": "transparent.completed",
+            "data": {"id": payment.provider_id, "status": "PAID"},
+        }
+        raw_body = json.dumps(payload).encode()
+        signature = base64.b64encode(hmac.new(b"webhook-secret", raw_body, hashlib.sha256).digest()).decode()
+
+        response = self.client.post(
+            "/webhooks/abacatepay/?webhookSecret=webhook-secret",
+            raw_body,
+            content_type="application/json",
+            HTTP_X_WEBHOOK_SIGNATURE=signature,
+        )
+        duplicate = self.client.post(
+            "/webhooks/abacatepay/?webhookSecret=webhook-secret",
+            raw_body,
+            content_type="application/json",
+            HTTP_X_WEBHOOK_SIGNATURE=signature,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"status": "processed"})
+        self.assertEqual(duplicate.status_code, 200)
+        self.assertEqual(duplicate.json(), {"status": "duplicate"})
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, SalePayment.Status.PAID)
+
+        invalid = self.client.post(
+            "/webhooks/abacatepay/?webhookSecret=webhook-secret",
+            raw_body,
+            content_type="application/json",
+            HTTP_X_WEBHOOK_SIGNATURE="invalid",
+        )
+        self.assertEqual(invalid.status_code, 401)
 
 
 class SalesAdminTests(TestCase):

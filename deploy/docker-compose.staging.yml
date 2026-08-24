@@ -43,6 +43,9 @@ services:
       DB_HOST: postgres
       DB_PORT: "5432"
       FRONTEND_URL: ${FRONTEND_URL:-https://ligara.online}
+      ABACATEPAY_API_KEY: ${ABACATEPAY_API_KEY:-}
+      ABACATEPAY_API_BASE_URL: ${ABACATEPAY_API_BASE_URL:-https://api.abacatepay.com/v2}
+      ABACATEPAY_WEBHOOK_SECRET: ${ABACATEPAY_WEBHOOK_SECRET:-}
       DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-no-reply@ligara.online}
       EMAIL_BACKEND: ${EMAIL_BACKEND:-django.core.mail.backends.console.EmailBackend}
       EMAIL_HOST: ${EMAIL_HOST:-}

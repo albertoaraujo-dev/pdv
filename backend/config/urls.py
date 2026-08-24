@@ -3,6 +3,7 @@ from django.http import JsonResponse
 from django.urls import include, path
 
 from .api_schema import api_docs, openapi_schema
+from apps.sales.webhooks import abacatepay_webhook
 
 
 def health(request):
@@ -18,4 +19,5 @@ urlpatterns = [
     path("api/sales/", include("apps.sales.urls")),
     path("api/tenants/", include("apps.tenants.urls")),
     path("health/", health),
+    path("webhooks/abacatepay/", abacatepay_webhook),
 ]

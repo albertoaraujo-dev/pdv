@@ -19,6 +19,7 @@ API_PATHS = {
     "/api/sales/sales/{id}/": ["get"],
     "/api/sales/sales/{id}/abacatepay/": ["get", "post"],
     "/api/sales/sales/{id}/abacatepay/simulate/": ["post"],
+    "/webhooks/abacatepay/": ["post"],
     "/api/tenants/organizations/": ["get"],
     "/api/tenants/organizations/{id}/": ["get"],
     "/api/tenants/stores/": ["get"],

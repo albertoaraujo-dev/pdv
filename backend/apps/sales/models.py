@@ -122,3 +122,18 @@ class SalePayment(models.Model):
 
     def __str__(self):
         return f"AbacatePay #{self.provider_id or self.external_id}"
+
+
+class SalePaymentWebhookEvent(models.Model):
+    event_id = models.CharField(max_length=128, unique=True)
+    event = models.CharField(max_length=80)
+    payment = models.ForeignKey(SalePayment, on_delete=models.SET_NULL, null=True, blank=True, related_name="webhook_events")
+    payload = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "evento de webhook de pagamento"
+        verbose_name_plural = "eventos de webhook de pagamento"
+
+    def __str__(self):
+        return f"Webhook {self.event} #{self.event_id}"

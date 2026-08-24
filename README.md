@@ -102,5 +102,10 @@ After a sale exists, the authenticated tenant-scoped endpoints are:
 - `POST /api/sales/sales/{id}/abacatepay/` creates or returns the idempotent transparent PIX.
 - `GET /api/sales/sales/{id}/abacatepay/` refreshes its provider status.
 - `POST /api/sales/sales/{id}/abacatepay/simulate/` calls the provider sandbox simulation endpoint.
+- `POST /webhooks/abacatepay/?webhookSecret=...` validates the HMAC signature and reconciles `transparent.completed` events.
 
 These endpoints return `id`, `status`, `brCode`, and `brCodeBase64`. They do not change `Sale.status` or inventory; the existing `pix_manual` flow remains unchanged.
+
+Configure `ABACATEPAY_WEBHOOK_SECRET` with the same secret registered in the
+AbacatePay webhook. Register the public endpoint over HTTPS and subscribe to
+`transparent.completed`.
