@@ -5,7 +5,7 @@ from rest_framework import serializers
 
 from apps.accounts.policies import get_allowed_stores
 from apps.catalog.models import Product
-from apps.inventory.services import InsufficientStockError, deduct_stock_for_sale
+from apps.inventory.services import InsufficientStockError, deduct_stock_for_sale, reserve_stock_for_sale
 
 from .models import Sale, SaleItem
 
@@ -111,7 +111,7 @@ class SaleCreateSerializer(serializers.ModelSerializer):
             organization=store.organization,
             store=store,
             cashier=request.user,
-            status=Sale.Status.COMPLETED,
+            status=Sale.Status.PENDING_PAYMENT if payment_method == Sale.PaymentMethod.PIX_ABACATEPAY else Sale.Status.COMPLETED,
             payment_method=payment_method,
             amount_received=amount_received,
             change_amount=(amount_received - total).quantize(MONEY_QUANT) if payment_method == Sale.PaymentMethod.CASH else Decimal("0.00"),
@@ -131,7 +131,10 @@ class SaleCreateSerializer(serializers.ModelSerializer):
                 line_total=line_total,
             )
         try:
-            deduct_stock_for_sale(sale, sale.items.select_related("product"), request.user)
+            if payment_method == Sale.PaymentMethod.PIX_ABACATEPAY:
+                reserve_stock_for_sale(sale, sale.items.select_related("product"), request.user)
+            else:
+                deduct_stock_for_sale(sale, sale.items.select_related("product"), request.user)
         except InsufficientStockError as exc:
             raise serializers.ValidationError({"items": str(exc)}) from exc
         sale.total_amount = total

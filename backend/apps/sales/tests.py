@@ -15,9 +15,11 @@ from apps.sales.admin import SaleAdmin, SaleItemAdmin
 from apps.catalog.models import Category, Product, Unit
 from apps.tenants.models import Organization, Store, UserProfile, UserStoreAccess
 from apps.inventory.models import Stock, StockMovement
+from apps.inventory.services import reserve_stock_for_sale
 
 from .abacatepay import AbacatePayError
 from .models import Sale, SaleItem, SalePayment
+from .services import apply_payment_status
 
 
 class SalesApiTests(TestCase):
@@ -393,6 +395,65 @@ class SalesApiTests(TestCase):
             HTTP_X_WEBHOOK_SIGNATURE="invalid",
         )
         self.assertEqual(invalid.status_code, 401)
+
+    @patch("apps.sales.views.create_transparent")
+    def test_pending_abacatepay_sale_reserves_and_cancellation_releases(self, create_mock):
+        create_mock.return_value = {"data": {"id": "tr_pending", "status": "pending", "brCode": "code", "brCodeBase64": "image"}}
+        self.client.force_authenticate(self.operator)
+        response = self.client.post(reverse("sale-list"), {
+            "store": self.first_store.id, "payment_method": Sale.PaymentMethod.PIX_ABACATEPAY,
+            "amount_received": "7.00", "items": [{"product": self.product.id, "quantity": "2.000"}],
+        }, format="json")
+        self.assertEqual(response.status_code, 201, response.json())
+        sale = Sale.objects.get(pk=response.json()["id"])
+        stock = Stock.objects.get(product=self.product)
+        self.assertEqual(sale.status, Sale.Status.PENDING_PAYMENT)
+        self.assertEqual(stock.quantity, Decimal("10.000"))
+        self.assertEqual(stock.reserved_quantity, Decimal("2.000"))
+        self.client.post(reverse("sale-cancel", kwargs={"pk": sale.pk}), format="json")
+        stock.refresh_from_db()
+        self.assertEqual(stock.reserved_quantity, Decimal("0.000"))
+        self.assertEqual(stock.quantity, Decimal("10.000"))
+
+    def test_payment_confirmation_converts_reservation_only_once(self):
+        sale = Sale.objects.create(
+            organization=self.first_org, store=self.first_store, cashier=self.operator,
+            status=Sale.Status.PENDING_PAYMENT, payment_method=Sale.PaymentMethod.PIX_ABACATEPAY,
+            total_amount="3.50",
+        )
+        item = SaleItem.objects.create(sale=sale, product=self.product, product_name=self.product.name,
+                                       product_sku=self.product.sku, quantity="1.000", unit_price="3.50", line_total="3.50")
+        stock = Stock.objects.get(product=self.product)
+        stock.reserved_quantity = 1
+        stock.save(update_fields=["reserved_quantity", "updated_at"])
+        payment = SalePayment.objects.create(sale=sale, external_id="confirm-once", provider_id="tr_confirm", amount_cents=350)
+        apply_payment_status(payment, "PAID")
+        apply_payment_status(payment, "PAID")
+        sale.refresh_from_db()
+        stock.refresh_from_db()
+        self.assertEqual(sale.status, Sale.Status.COMPLETED)
+        self.assertEqual(stock.quantity, Decimal("9.000"))
+        self.assertEqual(stock.reserved_quantity, Decimal("0.000"))
+        self.assertEqual(StockMovement.objects.filter(sale=sale, movement_type=StockMovement.MovementType.SALE).count(), 1)
+
+    def test_expired_payment_releases_reservation(self):
+        sale = Sale.objects.create(
+            organization=self.first_org, store=self.first_store, cashier=self.operator,
+            status=Sale.Status.PENDING_PAYMENT, payment_method=Sale.PaymentMethod.PIX_ABACATEPAY,
+            total_amount="3.50",
+        )
+        item = SaleItem.objects.create(sale=sale, product=self.product, product_name=self.product.name,
+                                       product_sku=self.product.sku, quantity="1.000", unit_price="3.50", line_total="3.50")
+        reserve_stock_for_sale(sale, [item], self.operator)
+        payment = SalePayment.objects.create(sale=sale, external_id="expire-once", provider_id="tr_expire", amount_cents=350)
+
+        apply_payment_status(payment, "EXPIRED")
+
+        sale.refresh_from_db()
+        stock = Stock.objects.get(product=self.product)
+        self.assertEqual(sale.status, Sale.Status.CANCELLED)
+        self.assertEqual(stock.quantity, Decimal("10.000"))
+        self.assertEqual(stock.reserved_quantity, Decimal("0.000"))
 
 
 class SalesAdminTests(TestCase):

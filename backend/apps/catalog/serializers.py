@@ -26,7 +26,7 @@ class ProductSerializer(serializers.ModelSerializer):
         stock = getattr(obj, "selected_store_stock", None)
         if stock is None:
             return None
-        quantity = stock[0].quantity if stock else Decimal("0.000")
+        quantity = stock[0].quantity - stock[0].reserved_quantity if stock else Decimal("0.000")
         return format(quantity.quantize(Decimal("0.001")), "f")
 
     class Meta:

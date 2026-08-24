@@ -44,6 +44,7 @@ type Sale = {
   payment_method_label: string
   amount_received: string
   change_amount: string
+  status: string
   items: Array<{
     id: number
     product_name: string
@@ -54,10 +55,18 @@ type Sale = {
   }>
 }
 
+type AbacatePayment = {
+  id: string | null
+  status: string
+  brCode: string
+  brCodeBase64: string
+}
+
 const paymentMethods = [
   { value: 'cash', label: 'Dinheiro' },
   { value: 'card_external', label: 'Cartão externo' },
   { value: 'pix_manual', label: 'Pix manual' },
+  { value: 'pix_abacatepay', label: 'Pix AbacatePay (sandbox)' },
   { value: 'other', label: 'Outro' }
 ]
 
@@ -80,6 +89,8 @@ const saleSuccess = ref('')
 const searchMessage = ref('')
 const lastSale = ref<Sale | null>(null)
 const pixQrCode = ref('')
+const pendingSaleId = ref<number | null>(null)
+const abacatePayment = ref<AbacatePayment | null>(null)
 const searchInput = ref<HTMLInputElement | null>(null)
 const displayName = computed(() => user.value?.name || user.value?.username || 'Usuário')
 const storeNames = computed(() => user.value?.stores.map((store) => `${store.code} - ${store.name}`).join(', ') || 'Nenhuma loja ativa')
@@ -102,6 +113,7 @@ const paymentPendingMessage = computed(() => {
   return `O valor recebido em dinheiro ainda é menor que o total da venda. Faltam ${money(remainingCashAmount.value)}.`
 })
 const canCloseSale = computed(() => Boolean(selectedStoreId.value && cartItems.value.length && hasEnoughPayment.value && !isClosingSale.value))
+const cartLocked = computed(() => Boolean(pendingSaleId.value || isClosingSale.value))
 const pixPayload = computed(() => {
   if (paymentMethod.value !== 'pix_manual' || !selectedStore.value?.pix_key || !cartTotal.value) {
     return ''
@@ -188,6 +200,10 @@ watch(paymentMethod, (value) => {
   saleError.value = ''
   saleSuccess.value = ''
   amountReceived.value = value !== 'cash' && cartTotal.value ? cartTotal.value.toFixed(2) : ''
+  if (value !== 'pix_abacatepay') {
+    pendingSaleId.value = null
+    abacatePayment.value = null
+  }
 })
 
 watch([amountReceived, selectedStoreId], () => {
@@ -205,7 +221,7 @@ watch(pixPayload, async (payload) => {
 }, { immediate: true })
 
 async function logout() {
-  if (isClosingSale.value) {
+  if (cartLocked.value) {
     return
   }
 
@@ -229,7 +245,7 @@ async function logout() {
 }
 
 function addToCart(product: Product) {
-  if (isClosingSale.value) {
+  if (cartLocked.value) {
     return
   }
   if (product.stock_quantity !== null && Number(product.stock_quantity) <= 0) {
@@ -252,7 +268,7 @@ function addToCart(product: Product) {
 }
 
 async function addSearchResultToCart() {
-  if (isAddingSearchResult.value || isClosingSale.value) {
+  if (isAddingSearchResult.value || cartLocked.value) {
     return
   }
   const value = search.value.trim()
@@ -311,7 +327,7 @@ function stockLabel(product: Product) {
 }
 
 function decrementItem(productId: number) {
-  if (isClosingSale.value) {
+  if (cartLocked.value) {
     return
   }
 
@@ -330,7 +346,7 @@ function decrementItem(productId: number) {
 }
 
 function removeItem(productId: number) {
-  if (isClosingSale.value) {
+  if (cartLocked.value) {
     return
   }
 
@@ -341,7 +357,7 @@ function removeItem(productId: number) {
 }
 
 function updateItemQuantity(productId: number, value: string | number, input?: HTMLInputElement) {
-  if (isClosingSale.value) {
+  if (cartLocked.value) {
     return
   }
 
@@ -458,29 +474,49 @@ async function closeSale() {
   }
 
   isClosingSale.value = true
-  const clientRequestId = createClientRequestId()
 
   try {
     const csrf = await $fetch<{ csrfToken: string }>(`${config.public.apiBase}/api/auth/csrf/`, {
       credentials: 'include'
     })
-    const sale = await $fetch<Sale>(`${config.public.apiBase}/api/sales/sales/`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'X-CSRFToken': csrf.csrfToken
-      },
-      body: {
-        store: selectedStoreId.value,
-        payment_method: paymentMethod.value,
-        amount_received: amountToSend.value.toFixed(2),
-        client_request_id: clientRequestId,
-        items: cartItems.value.map((item) => ({
-          product: item.product.id,
-          quantity: item.quantity.toFixed(3)
-        }))
+    let sale: Sale
+    if (paymentMethod.value === 'pix_abacatepay' && pendingSaleId.value) {
+      sale = await $fetch<Sale>(`${config.public.apiBase}/api/sales/sales/${pendingSaleId.value}/`, { credentials: 'include' })
+    } else {
+      const clientRequestId = createClientRequestId()
+      sale = await $fetch<Sale>(`${config.public.apiBase}/api/sales/sales/`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'X-CSRFToken': csrf.csrfToken
+        },
+        body: {
+          store: selectedStoreId.value,
+          payment_method: paymentMethod.value,
+          amount_received: amountToSend.value.toFixed(2),
+          client_request_id: clientRequestId,
+          items: cartItems.value.map((item) => ({
+            product: item.product.id,
+            quantity: item.quantity.toFixed(3)
+          }))
+        }
+      })
+    }
+
+    lastSale.value = sale
+    if (paymentMethod.value === 'pix_abacatepay') {
+      pendingSaleId.value = sale.id
+      const payment = await createAbacatePayment(sale.id, csrf.csrfToken)
+      abacatePayment.value = payment
+      if (payment.status === 'paid') {
+        await completeAbacateSale(sale.id)
+      } else {
+        saleSuccess.value = `Venda #${sale.id} criada. Aguardando pagamento Pix.`
+        await refreshProducts()
+        focusSearch()
       }
-    })
+      return
+    }
 
     cartItems.value = []
     amountReceived.value = ''
@@ -495,6 +531,57 @@ async function closeSale() {
   } finally {
     isClosingSale.value = false
   }
+}
+
+async function createAbacatePayment(saleId: number, csrfToken: string) {
+  return await $fetch<AbacatePayment>(`${config.public.apiBase}/api/sales/sales/${saleId}/abacatepay/`, {
+    method: 'POST', credentials: 'include', headers: { 'X-CSRFToken': csrfToken }
+  })
+}
+
+async function refreshAbacatePayment() {
+  if (!pendingSaleId.value) return
+  isClosingSale.value = true
+  try {
+    abacatePayment.value = await $fetch<AbacatePayment>(`${config.public.apiBase}/api/sales/sales/${pendingSaleId.value}/abacatepay/`, { credentials: 'include' })
+    if (abacatePayment.value.status === 'paid') await completeAbacateSale(pendingSaleId.value)
+  } catch (error) {
+    saleError.value = getFetchErrorMessage(error)
+  } finally {
+    isClosingSale.value = false
+  }
+}
+
+async function simulateAbacatePayment() {
+  if (!pendingSaleId.value) return
+  isClosingSale.value = true
+  try {
+    const csrf = await $fetch<{ csrfToken: string }>(`${config.public.apiBase}/api/auth/csrf/`, { credentials: 'include' })
+    abacatePayment.value = await $fetch<AbacatePayment>(`${config.public.apiBase}/api/sales/sales/${pendingSaleId.value}/abacatepay/simulate/`, {
+      method: 'POST', credentials: 'include', headers: { 'X-CSRFToken': csrf.csrfToken }
+    })
+    if (abacatePayment.value.status === 'paid') await completeAbacateSale(pendingSaleId.value)
+  } catch (error) {
+    saleError.value = getFetchErrorMessage(error)
+  } finally {
+    isClosingSale.value = false
+  }
+}
+
+async function copyAbacateCode() {
+  if (!abacatePayment.value?.brCode) return
+  await navigator.clipboard.writeText(abacatePayment.value.brCode)
+  saleSuccess.value = 'Código Pix AbacatePay copiado.'
+}
+
+async function completeAbacateSale(saleId: number) {
+  lastSale.value = await $fetch<Sale>(`${config.public.apiBase}/api/sales/sales/${saleId}/`, { credentials: 'include' })
+  cartItems.value = []
+  amountReceived.value = ''
+  pendingSaleId.value = null
+  saleSuccess.value = `Venda #${saleId} paga e finalizada.`
+  await refreshProducts()
+  focusSearch()
 }
 
 function money(value: number | string) {
@@ -535,7 +622,7 @@ function money(value: number | string) {
 
       <label v-if="isClient && user?.stores.length" class="store-field">
         Loja da venda
-        <select v-model.number="selectedStoreId" :disabled="isClosingSale">
+        <select v-model.number="selectedStoreId" :disabled="cartLocked">
           <option :value="null" disabled>Selecione uma loja</option>
           <option v-for="store in user.stores" :key="store.id" :value="store.id">
             {{ store.code }} - {{ store.name }}
@@ -558,7 +645,7 @@ function money(value: number | string) {
 
         <label class="search-field">
           Buscar por nome, SKU ou código de barras
-          <input ref="searchInput" v-model="search" type="search" :disabled="isAddingSearchResult || isClosingSale" placeholder="Ex.: água, SKU ou código" @keydown.enter.prevent="addSearchResultToCart">
+          <input ref="searchInput" v-model="search" type="search" :disabled="isAddingSearchResult || cartLocked" placeholder="Ex.: água, SKU ou código" @keydown.enter.prevent="addSearchResultToCart">
         </label>
         <p v-if="isAddingSearchResult" class="muted">Buscando produto...</p>
         <p v-if="searchMessage" class="muted">{{ searchMessage }}</p>
@@ -575,7 +662,7 @@ function money(value: number | string) {
             </div>
             <div class="product-actions">
               <span>{{ money(product.price) }}</span>
-              <button type="button" :disabled="isClosingSale || isOutOfStock(product) || !selectedStoreId" @click="addToCart(product)">
+              <button type="button" :disabled="cartLocked || isOutOfStock(product) || !selectedStoreId" @click="addToCart(product)">
                 {{ isOutOfStock(product) ? 'Indisponível' : 'Adicionar' }}
               </button>
             </div>
@@ -600,10 +687,10 @@ function money(value: number | string) {
               <small>{{ item.quantity }} x {{ money(item.product.price) }}</small>
             </div>
             <div class="quantity-actions">
-              <button type="button" :disabled="isClosingSale" @click="decrementItem(item.product.id)">-</button>
-              <input class="quantity-input" type="number" min="1" step="1" :value="item.quantity" :disabled="isClosingSale" inputmode="numeric" aria-label="Quantidade" @change="updateItemQuantity(item.product.id, ($event.target as HTMLInputElement).value, $event.target as HTMLInputElement)">
-              <button type="button" :disabled="isClosingSale" @click="addToCart(item.product)">+</button>
-              <button type="button" :disabled="isClosingSale" @click="removeItem(item.product.id)">Remover</button>
+              <button type="button" :disabled="cartLocked" @click="decrementItem(item.product.id)">-</button>
+              <input class="quantity-input" type="number" min="1" step="1" :value="item.quantity" :disabled="cartLocked" inputmode="numeric" aria-label="Quantidade" @change="updateItemQuantity(item.product.id, ($event.target as HTMLInputElement).value, $event.target as HTMLInputElement)">
+              <button type="button" :disabled="cartLocked" @click="addToCart(item.product)">+</button>
+              <button type="button" :disabled="cartLocked" @click="removeItem(item.product.id)">Remover</button>
             </div>
           </li>
         </ul>
@@ -616,7 +703,7 @@ function money(value: number | string) {
       <div class="payment-box">
         <label class="store-field">
           Forma de pagamento
-          <select v-model="paymentMethod" :disabled="isClosingSale">
+          <select v-model="paymentMethod" :disabled="cartLocked">
             <option v-for="method in paymentMethods" :key="method.value" :value="method.value">
               {{ method.label }}
             </option>
@@ -645,6 +732,25 @@ function money(value: number | string) {
           </template>
           <p v-else-if="cartItems.length && selectedStore && !selectedStore.pix_key" class="sale-message sale-message-warning">Configure uma chave Pix nesta loja para exibir o QR Code.</p>
         </div>
+
+        <div v-if="paymentMethod === 'pix_abacatepay' && abacatePayment" class="pix-payment-box">
+          <img
+            v-if="abacatePayment.brCodeBase64"
+            class="pix-qr-code"
+            :src="abacatePayment.brCodeBase64.startsWith('data:') ? abacatePayment.brCodeBase64 : `data:image/png;base64,${abacatePayment.brCodeBase64}`"
+            alt="QR Code Pix AbacatePay"
+          >
+          <strong>Status: {{ abacatePayment.status }}</strong>
+          <button type="button" class="copy-pix-button" :disabled="isClosingSale" @click="copyAbacateCode">Copiar código Pix</button>
+          <details v-if="abacatePayment.brCode">
+            <summary>Mostrar código Pix</summary>
+            <code class="pix-code">{{ abacatePayment.brCode }}</code>
+          </details>
+          <div class="abacate-actions">
+            <button type="button" :disabled="isClosingSale" @click="refreshAbacatePayment">Atualizar status</button>
+            <button type="button" :disabled="isClosingSale" @click="simulateAbacatePayment">Simular pagamento</button>
+          </div>
+        </div>
       </div>
 
       <p v-if="isClient && selectedStore" class="muted">Loja da venda: {{ selectedStore.code }} - {{ selectedStore.name }}</p>
@@ -654,7 +760,7 @@ function money(value: number | string) {
       <p v-if="saleSuccess" class="sale-message sale-message-success">{{ saleSuccess }}</p>
 
       <button type="button" class="close-sale-button" :class="{ 'button-loading': isClosingSale }" :disabled="!canCloseSale" @click="closeSale">
-        {{ isClosingSale ? 'Finalizando...' : 'Finalizar venda' }}
+         {{ isClosingSale ? 'Finalizando...' : pendingSaleId ? 'Tentar criar pagamento novamente' : 'Finalizar venda' }}
       </button>
 
       <section v-if="lastSale" class="receipt-box" aria-label="Resumo da última venda">

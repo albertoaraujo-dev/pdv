@@ -10,6 +10,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from .models import SalePayment, SalePaymentWebhookEvent
+from .services import apply_payment_status
 
 
 def _status(value, fallback):
@@ -56,10 +57,13 @@ def abacatepay_webhook(request):
         if payment:
             event.payment = payment
             event.save(update_fields=["payment"])
-            payment.status = SalePayment.Status.PAID if event_name == "transparent.completed" else _status(data.get("status"), payment.status)
+            payment = apply_payment_status(
+                payment,
+                SalePayment.Status.PAID if event_name == "transparent.completed" else _status(data.get("status"), payment.status),
+                payload,
+            )
             payment.br_code = data.get("brCode", payment.br_code)
             payment.br_code_base64 = data.get("brCodeBase64", payment.br_code_base64)
-            payment.provider_response = payload
-            payment.save(update_fields=["status", "br_code", "br_code_base64", "provider_response", "updated_at"])
+            payment.save(update_fields=["br_code", "br_code_base64", "updated_at"])
 
     return JsonResponse({"status": "processed"})

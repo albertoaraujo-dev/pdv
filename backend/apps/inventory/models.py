@@ -13,6 +13,7 @@ class Stock(models.Model):
     store = models.ForeignKey(Store, on_delete=models.PROTECT, related_name="stock_balances", verbose_name="loja")
     product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name="stock_balances", verbose_name="produto")
     quantity = models.DecimalField("saldo", max_digits=12, decimal_places=3, default=Decimal("0.000"))
+    reserved_quantity = models.DecimalField("reservado", max_digits=12, decimal_places=3, default=Decimal("0.000"))
     updated_at = models.DateTimeField("atualizado em", auto_now=True)
 
     class Meta:
@@ -21,6 +22,9 @@ class Stock(models.Model):
         ordering = ["store__name", "product__name"]
         constraints = [
             models.UniqueConstraint(fields=["store", "product"], name="unique_stock_per_store_product"),
+            models.CheckConstraint(condition=models.Q(quantity__gte=0), name="stock_quantity_non_negative"),
+            models.CheckConstraint(condition=models.Q(reserved_quantity__gte=0), name="stock_reserved_non_negative"),
+            models.CheckConstraint(condition=models.Q(reserved_quantity__lte=models.F("quantity")), name="stock_reserved_not_above_quantity"),
         ]
         indexes = [
             models.Index(fields=["organization", "store"]),
@@ -31,6 +35,10 @@ class Stock(models.Model):
         errors = {}
         if self.quantity is not None and self.quantity < 0:
             errors["quantity"] = "O saldo de estoque não pode ser negativo."
+        if self.reserved_quantity is not None and self.reserved_quantity < 0:
+            errors["reserved_quantity"] = "O estoque reservado não pode ser negativo."
+        if self.quantity is not None and self.reserved_quantity is not None and self.reserved_quantity > self.quantity:
+            errors["reserved_quantity"] = "O estoque reservado não pode superar o saldo."
         if self.store_id and self.organization_id and self.store.organization_id != self.organization_id:
             errors["store"] = "A loja precisa pertencer à mesma organização do estoque."
         if self.product_id and self.organization_id and self.product.organization_id != self.organization_id:
@@ -43,7 +51,7 @@ class Stock(models.Model):
         return super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.store} - {self.product}: {self.quantity}"
+        return f"{self.store} - {self.product}: {self.quantity - self.reserved_quantity} disponível"
 
 
 class StockMovement(models.Model):
@@ -51,6 +59,8 @@ class StockMovement(models.Model):
         INBOUND = "inbound", "Entrada"
         SALE = "sale", "Venda"
         SALE_REVERSAL = "sale_reversal", "Estorno de venda"
+        RESERVATION = "reservation", "Reserva"
+        RELEASE = "release", "Liberação de reserva"
         ADJUSTMENT = "adjustment", "Ajuste"
 
     organization = models.ForeignKey(Organization, on_delete=models.PROTECT, related_name="stock_movements", verbose_name="organização")

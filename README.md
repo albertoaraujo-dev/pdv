@@ -80,8 +80,8 @@ docker compose restart frontend
 
 - Scripts de `backup-db.sh` e `restore-db.sh` executam backup custom do PostgreSQL e restore protegido por confirmação.
 - `backend/config/settings/production.py` ainda é base mínima; produção real exigirá configuração de proxy, HTTPS, secrets, HSTS e backup.
-- Estoque transacional ainda não foi implementado.
-- Pix automatizado, cartão integrado, TEF/maquininha, impressão física e dispositivos ainda não foram implementados.
+- O estoque disponível considera reservas de pagamentos pendentes; reservas são liberadas ao cancelar e convertidas em baixa ao confirmar o pagamento.
+- Pix automatizado via AbacatePay está disponível em sandbox; cartão integrado, TEF/maquininha, impressão física e dispositivos ainda não foram implementados.
 - O cartão externo e o Pix manual existentes são apenas registros operacionais, sem autorização, webhook ou conciliação automática.
 - Deploy automático para a VPS está configurado via GitHub Actions, com backup antes de cada deploy, rollback manual por commit/tag e healthcheck público.
 
@@ -97,14 +97,14 @@ docker compose restart frontend
 
 Configure `ABACATEPAY_API_KEY` only in the backend/container environment. The optional `ABACATEPAY_API_BASE_URL` defaults to `https://api.abacatepay.com/v2`; use the sandbox base URL/key supplied by AbacatePay when applicable. Never use an `NUXT_PUBLIC_*` variable for the key.
 
-After a sale exists, the authenticated tenant-scoped endpoints are:
+For a sale using `pix_abacatepay`, the authenticated tenant-scoped endpoints are:
 
 - `POST /api/sales/sales/{id}/abacatepay/` creates or returns the idempotent transparent PIX.
 - `GET /api/sales/sales/{id}/abacatepay/` refreshes its provider status.
 - `POST /api/sales/sales/{id}/abacatepay/simulate/` calls the provider sandbox simulation endpoint.
 - `POST /webhooks/abacatepay/?webhookSecret=...` validates the HMAC signature and reconciles `transparent.completed` events.
 
-These endpoints return `id`, `status`, `brCode`, and `brCodeBase64`. They do not change `Sale.status` or inventory; the existing `pix_manual` flow remains unchanged.
+Creating the sale reserves stock and leaves it as `pending_payment`. A paid provider status atomically converts the reservation to the definitive sale deduction and marks the sale `completed`; cancellation releases the reservation idempotently. The existing `pix_manual` and cash flows remain unchanged.
 
 Configure `ABACATEPAY_WEBHOOK_SECRET` with the same secret registered in the
 AbacatePay webhook. Register the public endpoint over HTTPS and subscribe to

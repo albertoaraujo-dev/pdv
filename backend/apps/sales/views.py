@@ -8,6 +8,7 @@ from apps.accounts.policies import can_access_pos, get_allowed_stores, get_user_
 
 from .abacatepay import AbacatePayError, create_transparent, get_transparent, simulate_transparent
 from .models import Sale, SalePayment
+from .services import apply_payment_status
 from .payment_serializers import SalePaymentSerializer
 from .serializers import SaleCreateSerializer, SaleSerializer
 from apps.inventory.services import reverse_stock_for_sale
@@ -51,6 +52,12 @@ class SaleViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post", "get"], url_path="abacatepay")
     def abacatepay(self, request, pk=None):
         sale = self.get_object()
+        # Keep the already-shipped administrative endpoint usable for legacy
+        # completed sales; new gateway sales always use the pending lifecycle.
+        if sale.payment_method != Sale.PaymentMethod.PIX_ABACATEPAY and sale.status != Sale.Status.COMPLETED:
+            return Response({"detail": "A venda não usa Pix AbacatePay."}, status=status.HTTP_409_CONFLICT)
+        if sale.status not in {Sale.Status.PENDING_PAYMENT, Sale.Status.COMPLETED}:
+            return Response({"detail": "A venda não está aguardando pagamento."}, status=status.HTTP_409_CONFLICT)
         if request.method == "GET":
             return self._refresh_abacatepay(sale)
 
@@ -63,7 +70,7 @@ class SaleViewSet(viewsets.ModelViewSet):
                     "amount_cents": int(sale.total_amount * 100),
                 },
             )
-            if not created and payment.status != SalePayment.Status.FAILED:
+            if not created and payment.status not in {SalePayment.Status.FAILED, SalePayment.Status.EXPIRED}:
                 return Response(SalePaymentSerializer(payment).data, status=status.HTTP_200_OK)
             try:
                 response = create_transparent(
@@ -74,13 +81,13 @@ class SaleViewSet(viewsets.ModelViewSet):
                 data = response.get("data", response)
                 provider_status = self._payment_status(data.get("status"), SalePayment.Status.PENDING)
                 payment.provider_id = data.get("id")
-                payment.status = provider_status
                 payment.br_code = data.get("brCode", "")
                 payment.br_code_base64 = data.get("brCodeBase64", "")
                 payment.provider_response = response
                 if not payment.provider_id:
                     raise AbacatePayError("A API AbacatePay não retornou o ID do pagamento.")
                 payment.save()
+                payment = apply_payment_status(payment, provider_status, response, request.user)
             except AbacatePayError as exc:
                 payment.status = SalePayment.Status.FAILED
                 payment.failure_reason = str(exc)
@@ -100,11 +107,15 @@ class SaleViewSet(viewsets.ModelViewSet):
         except AbacatePayError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
         data = response.get("data", response)
-        payment.status = self._payment_status(data.get("status"), payment.status)
+        payment = apply_payment_status(
+            payment,
+            self._payment_status(data.get("status"), payment.status),
+            response,
+        )
         payment.br_code = data.get("brCode", payment.br_code)
         payment.br_code_base64 = data.get("brCodeBase64", payment.br_code_base64)
         payment.provider_response = response
-        payment.save(update_fields=["status", "br_code", "br_code_base64", "provider_response", "updated_at"])
+        payment.save(update_fields=["br_code", "br_code_base64", "provider_response", "updated_at"])
         return Response(SalePaymentSerializer(payment).data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"], url_path="abacatepay/simulate")
@@ -123,9 +134,13 @@ class SaleViewSet(viewsets.ModelViewSet):
         except AbacatePayError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
         data = response.get("data", response)
-        payment.status = self._payment_status(data.get("status"), payment.status)
+        payment = apply_payment_status(
+            payment,
+            self._payment_status(data.get("status"), payment.status),
+            response,
+        )
         payment.br_code = data.get("brCode", payment.br_code)
         payment.br_code_base64 = data.get("brCodeBase64", payment.br_code_base64)
         payment.provider_response = response
-        payment.save(update_fields=["status", "br_code", "br_code_base64", "provider_response", "updated_at"])
+        payment.save(update_fields=["br_code", "br_code_base64", "provider_response", "updated_at"])
         return Response(SalePaymentSerializer(payment).data, status=status.HTTP_200_OK)

@@ -12,12 +12,14 @@ from apps.tenants.models import Organization, Store
 class Sale(models.Model):
     class Status(models.TextChoices):
         COMPLETED = "completed", "Concluída"
+        PENDING_PAYMENT = "pending_payment", "Pagamento pendente"
         CANCELLED = "cancelled", "Cancelada"
 
     class PaymentMethod(models.TextChoices):
         CASH = "cash", "Dinheiro"
         CARD_EXTERNAL = "card_external", "Cartão externo"
         PIX_MANUAL = "pix_manual", "Pix manual"
+        PIX_ABACATEPAY = "pix_abacatepay", "Pix AbacatePay"
         OTHER = "other", "Outro"
 
     organization = models.ForeignKey(Organization, on_delete=models.PROTECT, related_name="sales", verbose_name="organização")
