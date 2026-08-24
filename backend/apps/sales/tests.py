@@ -1,8 +1,9 @@
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.contrib import admin
 from django.contrib.auth import get_user_model
-from django.test import RequestFactory, TestCase
+from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
 from rest_framework.test import APIClient
 
@@ -11,7 +12,8 @@ from apps.catalog.models import Category, Product, Unit
 from apps.tenants.models import Organization, Store, UserProfile, UserStoreAccess
 from apps.inventory.models import Stock, StockMovement
 
-from .models import Sale, SaleItem
+from .abacatepay import AbacatePayError
+from .models import Sale, SaleItem, SalePayment
 
 
 class SalesApiTests(TestCase):
@@ -271,6 +273,77 @@ class SalesApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual([sale["id"] for sale in response.json()["results"]], [allowed_sale.id])
+
+    def test_abacatepay_requires_authentication_and_tenant_scope(self):
+        sale = Sale.objects.create(organization=self.second_org, store=self.second_store, cashier=self.operator, total_amount="3.50")
+        anonymous_response = self.client.post(reverse("sale-abacatepay", kwargs={"pk": sale.pk}), format="json")
+        self.assertEqual(anonymous_response.status_code, 403)
+
+        self.client.force_authenticate(self.operator)
+        scoped_response = self.client.post(reverse("sale-abacatepay", kwargs={"pk": sale.pk}), format="json")
+        self.assertEqual(scoped_response.status_code, 404)
+
+    @patch("apps.sales.views.create_transparent")
+    def test_abacatepay_creation_sends_cents_and_is_idempotent(self, create_transparent_mock):
+        create_transparent_mock.return_value = {
+            "data": {"id": "tr_123", "status": "pending", "brCode": "000201", "brCodeBase64": "base64"}
+        }
+        self.client.force_authenticate(self.operator)
+        sale_response = self.client.post(
+            reverse("sale-list"),
+            {"store": self.first_store.id, "payment_method": Sale.PaymentMethod.PIX_MANUAL, "amount_received": "3.50", "items": [{"product": self.product.id, "quantity": "1.000"}]},
+            format="json",
+        )
+        sale_id = sale_response.json()["id"]
+        url = reverse("sale-abacatepay", kwargs={"pk": sale_id})
+        first = self.client.post(url, format="json")
+        second = self.client.post(url, format="json")
+
+        self.assertEqual(first.status_code, 201, first.json())
+        self.assertEqual(second.status_code, 200, second.json())
+        self.assertEqual(first.json(), {"id": "tr_123", "status": "pending", "brCode": "000201", "brCodeBase64": "base64"})
+        self.assertEqual(first.json(), second.json())
+        create_transparent_mock.assert_called_once_with(
+            amount_cents=350,
+            external_id=f"pdv-sale-{self.first_org.id}-{sale_id}",
+            metadata={"saleId": str(sale_id), "organizationId": str(self.first_org.id)},
+        )
+        self.assertEqual(Stock.objects.get(product=self.product).quantity, Decimal("9.000"))
+        self.assertEqual(Sale.objects.get(pk=sale_id).status, Sale.Status.COMPLETED)
+
+    @patch("apps.sales.views.create_transparent")
+    def test_abacatepay_provider_error_is_returned_without_exposing_secret(self, create_transparent_mock):
+        create_transparent_mock.side_effect = AbacatePayError("provider down")
+        self.client.force_authenticate(self.operator)
+        sale = Sale.objects.create(organization=self.first_org, store=self.first_store, cashier=self.operator, total_amount="3.50")
+
+        response = self.client.post(reverse("sale-abacatepay", kwargs={"pk": sale.pk}), format="json")
+
+        self.assertEqual(response.status_code, 502)
+        self.assertNotIn("ABACATEPAY_API_KEY", response.content.decode())
+
+    @patch("apps.sales.views.simulate_transparent")
+    @patch("apps.sales.views.get_transparent")
+    @patch("apps.sales.views.create_transparent")
+    @override_settings(DEBUG=True)
+    def test_abacatepay_status_and_simulation_do_not_change_sale_or_stock(self, create_mock, get_mock, simulate_mock):
+        create_mock.return_value = {"data": {"id": "tr_status", "status": "pending", "brCode": "code", "brCodeBase64": "image"}}
+        get_mock.return_value = {"data": {"id": "tr_status", "status": "PAID"}}
+        simulate_mock.return_value = {"data": {"id": "tr_status", "status": "PAID", "brCode": "code", "brCodeBase64": "image"}}
+        self.client.force_authenticate(self.operator)
+        sale = Sale.objects.create(organization=self.first_org, store=self.first_store, cashier=self.operator, total_amount="3.50")
+        self.client.post(reverse("sale-abacatepay", kwargs={"pk": sale.pk}), format="json")
+
+        status_response = self.client.get(reverse("sale-abacatepay", kwargs={"pk": sale.pk}))
+        simulate_response = self.client.post(reverse("sale-simulate-abacatepay", kwargs={"pk": sale.pk}), format="json")
+
+        self.assertEqual(status_response.json()["status"], SalePayment.Status.PAID)
+        self.assertEqual(simulate_response.json()["status"], SalePayment.Status.PAID)
+        get_mock.assert_called_once_with("tr_status")
+        simulate_mock.assert_called_once_with("tr_status")
+        sale.refresh_from_db()
+        self.assertEqual(sale.status, Sale.Status.COMPLETED)
+        self.assertEqual(Stock.objects.get(product=self.product).quantity, Decimal("10.000"))
 
 
 class SalesAdminTests(TestCase):

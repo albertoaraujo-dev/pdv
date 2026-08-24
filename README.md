@@ -93,3 +93,14 @@ docker compose restart frontend
 - `docs/`: documentacao tecnica
 - `infra/`: infraestrutura local/futura
 - `scripts/`: scripts operacionais
+# AbacatePay sandbox
+
+Configure `ABACATEPAY_API_KEY` only in the backend/container environment. The optional `ABACATEPAY_API_BASE_URL` defaults to `https://api.abacatepay.com/v2`; use the sandbox base URL/key supplied by AbacatePay when applicable. Never use an `NUXT_PUBLIC_*` variable for the key.
+
+After a sale exists, the authenticated tenant-scoped endpoints are:
+
+- `POST /api/sales/sales/{id}/abacatepay/` creates or returns the idempotent transparent PIX.
+- `GET /api/sales/sales/{id}/abacatepay/` refreshes its provider status.
+- `POST /api/sales/sales/{id}/abacatepay/simulate/` calls the provider sandbox simulation endpoint.
+
+These endpoints return `id`, `status`, `brCode`, and `brCodeBase64`. They do not change `Sale.status` or inventory; the existing `pix_manual` flow remains unchanged.

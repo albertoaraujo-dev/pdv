@@ -93,3 +93,32 @@ class SaleItem(models.Model):
 
     def __str__(self):
         return f"{self.product_name} x {self.quantity}"
+
+
+class SalePayment(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pendente"
+        PAID = "paid", "Pago"
+        EXPIRED = "expired", "Expirado"
+        CANCELLED = "cancelled", "Cancelado"
+        FAILED = "failed", "Falhou"
+
+    sale = models.OneToOneField(Sale, on_delete=models.CASCADE, related_name="abacatepay_payment")
+    external_id = models.CharField(max_length=128, unique=True)
+    provider_id = models.CharField(max_length=128, unique=True, null=True, blank=True)
+    amount_cents = models.PositiveBigIntegerField()
+    status = models.CharField(max_length=24, choices=Status.choices, default=Status.PENDING)
+    br_code = models.TextField(blank=True)
+    br_code_base64 = models.TextField(blank=True)
+    provider_response = models.JSONField(default=dict, blank=True)
+    failure_reason = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "pagamento AbacatePay"
+        verbose_name_plural = "pagamentos AbacatePay"
+        indexes = [models.Index(fields=["status", "updated_at"])]
+
+    def __str__(self):
+        return f"AbacatePay #{self.provider_id or self.external_id}"
