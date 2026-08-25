@@ -518,8 +518,7 @@ async function closeSale() {
       return
     }
 
-    cartItems.value = []
-    amountReceived.value = ''
+    resetSaleState()
     lastSale.value = sale
     saleSuccess.value = sale.change_amount !== '0.00'
       ? `Venda #${sale.id} finalizada em ${money(sale.total_amount)}. Troco: ${money(sale.change_amount)}.`
@@ -576,12 +575,18 @@ async function copyAbacateCode() {
 
 async function completeAbacateSale(saleId: number) {
   lastSale.value = await $fetch<Sale>(`${config.public.apiBase}/api/sales/sales/${saleId}/`, { credentials: 'include' })
-  cartItems.value = []
-  amountReceived.value = ''
-  pendingSaleId.value = null
+  resetSaleState()
   saleSuccess.value = `Venda #${saleId} paga e finalizada.`
   await refreshProducts()
   focusSearch()
+}
+
+function resetSaleState() {
+  cartItems.value = []
+  amountReceived.value = ''
+  pendingSaleId.value = null
+  abacatePayment.value = null
+  paymentMethod.value = 'cash'
 }
 
 function money(value: number | string) {
