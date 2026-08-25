@@ -109,3 +109,6 @@ Creating the sale reserves stock and leaves it as `pending_payment`. A paid prov
 Configure `ABACATEPAY_WEBHOOK_SECRET` with the same secret registered in the
 AbacatePay webhook. Register the public endpoint over HTTPS and subscribe to
 `transparent.completed`.
+
+For sandbox testing only, set `ABACATEPAY_ALLOW_SIMULATION=True`. Keep it
+disabled in production with real payment credentials.

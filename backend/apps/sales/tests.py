@@ -331,7 +331,7 @@ class SalesApiTests(TestCase):
     @patch("apps.sales.views.simulate_transparent")
     @patch("apps.sales.views.get_transparent")
     @patch("apps.sales.views.create_transparent")
-    @override_settings(DEBUG=True)
+    @override_settings(ABACATEPAY_ALLOW_SIMULATION=True)
     def test_abacatepay_status_and_simulation_do_not_change_sale_or_stock(self, create_mock, get_mock, simulate_mock):
         create_mock.return_value = {"data": {"id": "tr_status", "status": "pending", "brCode": "code", "brCodeBase64": "image"}}
         get_mock.return_value = {"data": {"id": "tr_status", "status": "PAID"}}

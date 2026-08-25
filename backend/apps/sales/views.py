@@ -120,8 +120,8 @@ class SaleViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="abacatepay/simulate")
     def simulate_abacatepay(self, request, pk=None):
-        if not settings.DEBUG:
-            return Response({"detail": "Simulação disponível somente em DEBUG."}, status=status.HTTP_403_FORBIDDEN)
+        if not settings.ABACATEPAY_ALLOW_SIMULATION:
+            return Response({"detail": "Simulação AbacatePay desabilitada neste ambiente."}, status=status.HTTP_403_FORBIDDEN)
         sale = self.get_object()
         try:
             payment = sale.abacatepay_payment
