@@ -82,7 +82,7 @@ docker compose restart frontend
 - `backend/config/settings/production.py` ainda é base mínima; produção real exigirá configuração de proxy, HTTPS, secrets, HSTS e backup.
 - O estoque disponível considera reservas de pagamentos pendentes; reservas são liberadas ao cancelar e convertidas em baixa ao confirmar o pagamento.
 - Pix automatizado via AbacatePay está disponível em sandbox; cartão integrado, TEF/maquininha, impressão física e dispositivos ainda não foram implementados.
-- O cartão externo e o Pix manual existentes são apenas registros operacionais, sem autorização, webhook ou conciliação automática.
+- O cartão externo continua sem integração TEF/POS: a venda cria um registro interno aprovado, consultável em `/api/sales/sales/{id}/transaction/`, e gerente/admin pode conciliá-lo manualmente em `/api/sales/sales/{id}/transaction/reconcile/`; nenhuma dessas ações altera venda ou estoque.
 - Deploy automático para a VPS está configurado via GitHub Actions, com backup antes de cada deploy, rollback manual por commit/tag e healthcheck público.
 
 ## Estrutura

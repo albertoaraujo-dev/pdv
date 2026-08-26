@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from django.contrib import admin
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
 from rest_framework.test import APIClient
@@ -18,7 +19,7 @@ from apps.inventory.models import Stock, StockMovement
 from apps.inventory.services import reserve_stock_for_sale
 
 from .abacatepay import AbacatePayError
-from .models import Sale, SaleItem, SalePayment
+from .models import CardPaymentTransaction, Sale, SaleItem, SalePayment
 from .services import apply_payment_status
 
 
@@ -125,6 +126,77 @@ class SalesApiTests(TestCase):
         self.assertEqual(first_response.json()["id"], second_response.json()["id"])
         self.assertEqual(Sale.objects.count(), 1)
         self.assertEqual(SaleItem.objects.count(), 1)
+
+    def test_card_external_sale_creates_approved_transaction_idempotently(self):
+        self.client.force_authenticate(self.operator)
+        payload = {
+            "store": self.first_store.id,
+            "payment_method": Sale.PaymentMethod.CARD_EXTERNAL,
+            "amount_received": "3.50",
+            "client_request_id": "card-request-1",
+            "items": [{"product": self.product.id, "quantity": "1.000"}],
+        }
+
+        first = self.client.post(reverse("sale-list"), payload, format="json")
+        second = self.client.post(reverse("sale-list"), payload, format="json")
+
+        self.assertEqual(first.status_code, 201, first.json())
+        self.assertEqual(second.status_code, 201, second.json())
+        sale = Sale.objects.get()
+        card_transaction = CardPaymentTransaction.objects.get()
+        self.assertEqual(card_transaction.sale, sale)
+        self.assertEqual(card_transaction.status, CardPaymentTransaction.Status.APPROVED)
+        self.assertEqual(card_transaction.amount_cents, 350)
+        self.assertEqual(card_transaction.client_reference, f"card-{self.first_org.id}-card-request-1")
+        self.assertEqual(StockMovement.objects.count(), 1)
+
+    def test_card_transaction_is_tenant_scoped(self):
+        sale = Sale.objects.create(
+            organization=self.second_org, store=self.second_store, cashier=self.operator,
+            payment_method=Sale.PaymentMethod.CARD_EXTERNAL, total_amount="12.00",
+        )
+        CardPaymentTransaction.objects.create(
+            sale=sale, external_id="other-card", client_reference="other-card-ref", amount_cents=1200,
+        )
+        self.client.force_authenticate(self.operator)
+
+        response = self.client.get(reverse("sale-transaction", kwargs={"pk": sale.pk}))
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_only_manager_or_admin_can_reconcile_card_transaction_without_stock_change(self):
+        self.client.force_authenticate(self.operator)
+        sale_response = self.client.post(reverse("sale-list"), {
+            "store": self.first_store.id, "payment_method": Sale.PaymentMethod.CARD_EXTERNAL,
+            "amount_received": "3.50", "items": [{"product": self.product.id, "quantity": "1.000"}],
+        }, format="json")
+        sale = Sale.objects.get(pk=sale_response.json()["id"])
+        stock_before = Stock.objects.get(product=self.product).quantity
+        reconcile_url = reverse("sale-reconcile-transaction", kwargs={"pk": sale.pk})
+
+        denied = self.client.post(reconcile_url, format="json")
+        self.assertEqual(denied.status_code, 403)
+        self.client.force_authenticate(self.manager)
+        reconciled = self.client.post(reconcile_url, format="json")
+        repeated = self.client.post(reconcile_url, format="json")
+
+        self.assertEqual(reconciled.status_code, 200, reconciled.json())
+        self.assertEqual(repeated.status_code, 200, repeated.json())
+        self.assertEqual(reconciled.json()["status"], CardPaymentTransaction.Status.RECONCILED)
+        self.assertEqual(Stock.objects.get(product=self.product).quantity, stock_before)
+
+    def test_only_approved_card_transaction_can_be_reconciled(self):
+        sale = Sale.objects.create(
+            organization=self.first_org, store=self.first_store, cashier=self.operator,
+            payment_method=Sale.PaymentMethod.CARD_EXTERNAL, total_amount="3.50",
+        )
+        card_transaction = CardPaymentTransaction.objects.create(
+            sale=sale, external_id="declined-card", client_reference="declined-ref", amount_cents=350,
+            status=CardPaymentTransaction.Status.DECLINED,
+        )
+
+        with self.assertRaises(ValidationError):
+            card_transaction.reconcile(self.manager)
 
     def test_sale_cancel_reverses_stock_and_is_idempotent(self):
         self.client.force_authenticate(self.operator)

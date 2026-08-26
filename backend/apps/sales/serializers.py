@@ -7,7 +7,7 @@ from apps.accounts.policies import get_allowed_stores
 from apps.catalog.models import Product
 from apps.inventory.services import InsufficientStockError, deduct_stock_for_sale, reserve_stock_for_sale
 
-from .models import Sale, SaleItem
+from .models import CardPaymentTransaction, Sale, SaleItem
 
 
 MONEY_QUANT = Decimal("0.01")
@@ -53,6 +53,13 @@ class SaleSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = ["organization", "cashier", "status", "total_amount", "payment_method_label", "amount_received", "change_amount", "client_request_id", "created_at"]
+
+
+class CardPaymentTransactionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CardPaymentTransaction
+        fields = ["id", "sale", "external_id", "client_reference", "provider", "terminal_id", "amount_cents", "status", "reconciled_at", "reconciled_by", "created_at", "updated_at"]
+        read_only_fields = fields
 
 
 class SaleCreateSerializer(serializers.ModelSerializer):
@@ -106,6 +113,8 @@ class SaleCreateSerializer(serializers.ModelSerializer):
         if client_request_id:
             existing_sale = Sale.objects.filter(cashier=request.user, store=store, client_request_id=client_request_id).first()
             if existing_sale:
+                if existing_sale.payment_method == Sale.PaymentMethod.CARD_EXTERNAL:
+                    _ensure_card_transaction(existing_sale)
                 return existing_sale
         sale = Sale.objects.create(
             organization=store.organization,
@@ -139,7 +148,29 @@ class SaleCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"items": str(exc)}) from exc
         sale.total_amount = total
         sale.save(update_fields=["total_amount", "updated_at"])
+        if payment_method == Sale.PaymentMethod.CARD_EXTERNAL:
+            _ensure_card_transaction(sale)
         return sale
 
     def to_representation(self, instance):
         return SaleSerializer(instance, context=self.context).data
+
+
+def _ensure_card_transaction(sale):
+    client_reference = (
+        f"card-{sale.organization_id}-{sale.client_request_id}"
+        if sale.client_request_id
+        else f"card-sale-{sale.organization_id}-{sale.pk}"
+    )
+    transaction, _created = CardPaymentTransaction.objects.get_or_create(
+        sale=sale,
+        defaults={
+            "external_id": f"pdv-card-sale-{sale.organization_id}-{sale.pk}",
+            "client_reference": client_reference,
+            "amount_cents": int(sale.total_amount * 100),
+            "status": CardPaymentTransaction.Status.APPROVED,
+        },
+    )
+    if transaction.amount_cents != int(sale.total_amount * 100):
+        raise serializers.ValidationError({"amount_received": "O valor da transação não corresponde ao total da venda."})
+    return transaction

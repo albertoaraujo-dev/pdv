@@ -1,16 +1,17 @@
 from django.conf import settings
 from django.db import transaction
+from django.core.exceptions import ValidationError
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from apps.accounts.policies import can_access_pos, get_allowed_stores, get_user_organization, is_inactive_for_login
+from apps.accounts.policies import can_access_admin, can_access_pos, get_allowed_stores, get_user_organization, is_inactive_for_login
 
 from .abacatepay import AbacatePayError, create_transparent, get_transparent, simulate_transparent
-from .models import Sale, SalePayment
+from .models import CardPaymentTransaction, Sale, SalePayment
 from .services import apply_payment_status
 from .payment_serializers import SalePaymentSerializer
-from .serializers import SaleCreateSerializer, SaleSerializer
+from .serializers import CardPaymentTransactionSerializer, SaleCreateSerializer, SaleSerializer
 from apps.inventory.services import reverse_stock_for_sale
 
 
@@ -43,6 +44,37 @@ class SaleViewSet(viewsets.ModelViewSet):
         if not organization:
             return queryset.none()
         return queryset.filter(organization=organization, store__in=get_allowed_stores(user))
+
+    @action(detail=True, methods=["get"], url_path="transaction")
+    def transaction(self, request, pk=None):
+        sale = self.get_object()
+        if sale.payment_method != Sale.PaymentMethod.CARD_EXTERNAL:
+            return Response({"detail": "A venda não usa cartão externo."}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            transaction_record = sale.card_transaction
+        except CardPaymentTransaction.DoesNotExist:
+            return Response({"detail": "Transação de cartão não encontrada."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(CardPaymentTransactionSerializer(transaction_record).data)
+
+    @action(detail=True, methods=["post"], url_path="transaction/reconcile")
+    def reconcile_transaction(self, request, pk=None):
+        if not can_access_admin(request.user):
+            return Response({"detail": "Somente gerente ou administrador pode conciliar transações."}, status=status.HTTP_403_FORBIDDEN)
+        sale = self.get_object()
+        if sale.payment_method != Sale.PaymentMethod.CARD_EXTERNAL:
+            return Response({"detail": "A venda não usa cartão externo."}, status=status.HTTP_404_NOT_FOUND)
+        with transaction.atomic():
+            try:
+                transaction_record = CardPaymentTransaction.objects.select_for_update().get(sale=sale)
+            except CardPaymentTransaction.DoesNotExist:
+                return Response({"detail": "Transação de cartão não encontrada."}, status=status.HTTP_404_NOT_FOUND)
+            if transaction_record.amount_cents != int(sale.total_amount * 100):
+                return Response({"detail": "O valor da transação não corresponde ao total da venda."}, status=status.HTTP_409_CONFLICT)
+            try:
+                transaction_record.reconcile(request.user)
+            except ValidationError as exc:
+                return Response({"detail": exc.message}, status=status.HTTP_409_CONFLICT)
+        return Response(CardPaymentTransactionSerializer(transaction_record).data)
 
     @action(detail=True, methods=["post"], url_path="cancel")
     def cancel(self, request, pk=None):

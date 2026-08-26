@@ -3,7 +3,7 @@ from unfold.admin import ModelAdmin, TabularInline
 
 from apps.accounts.policies import can_access_admin, get_allowed_stores, get_user_organization
 
-from .models import Sale, SaleItem
+from .models import CardPaymentTransaction, Sale, SaleItem
 
 
 class SaleItemInline(TabularInline):
@@ -79,6 +79,35 @@ class SaleItemAdmin(ModelAdmin):
         return self.get_queryset(request).filter(pk=obj.pk).exists()
 
     def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+
+@admin.register(CardPaymentTransaction)
+class CardPaymentTransactionAdmin(ModelAdmin):
+    list_display = ["id", "sale", "external_id", "provider", "terminal_id", "amount_cents", "status", "created_at"]
+    readonly_fields = [field.name for field in CardPaymentTransaction._meta.fields]
+    search_fields = ["external_id", "client_reference", "sale__id"]
+
+    def get_queryset(self, request):
+        queryset = super().get_queryset(request).select_related("sale", "sale__organization", "sale__store")
+        if request.user.is_superuser:
+            return queryset
+        organization = get_user_organization(request.user)
+        return queryset.filter(sale__organization=organization, sale__store__in=get_allowed_stores(request.user)) if organization else queryset.none()
+
+    def has_module_permission(self, request):
+        return can_access_admin(request.user)
+
+    def has_view_permission(self, request, obj=None):
+        return can_access_admin(request.user) and (obj is None or self.get_queryset(request).filter(pk=obj.pk).exists())
+
+    def has_add_permission(self, request, obj=None):
         return False
 
     def has_change_permission(self, request, obj=None):

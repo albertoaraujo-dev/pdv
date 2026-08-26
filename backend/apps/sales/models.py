@@ -139,3 +139,54 @@ class SalePaymentWebhookEvent(models.Model):
 
     def __str__(self):
         return f"Webhook {self.event} #{self.event_id}"
+
+
+class CardPaymentTransaction(models.Model):
+    class Status(models.TextChoices):
+        APPROVED = "approved", "Aprovada"
+        PENDING = "pending", "Pendente"
+        DECLINED = "declined", "Recusada"
+        CANCELLED = "cancelled", "Cancelada"
+        RECONCILED = "reconciled", "Conciliada"
+
+    sale = models.OneToOneField(Sale, on_delete=models.CASCADE, related_name="card_transaction", verbose_name="venda")
+    external_id = models.CharField("ID externo", max_length=128, unique=True)
+    client_reference = models.CharField("referência do cliente", max_length=128, unique=True)
+    provider = models.CharField("provedor", max_length=80, default="external_card")
+    terminal_id = models.CharField("terminal", max_length=80, blank=True)
+    amount_cents = models.PositiveBigIntegerField("valor em centavos")
+    status = models.CharField("status", max_length=24, choices=Status.choices, default=Status.APPROVED)
+    reconciled_at = models.DateTimeField("conciliado em", null=True, blank=True)
+    reconciled_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="reconciled_card_transactions")
+    created_at = models.DateTimeField("criado em", auto_now_add=True)
+    updated_at = models.DateTimeField("atualizado em", auto_now=True)
+
+    class Meta:
+        verbose_name = "transação de cartão externo"
+        verbose_name_plural = "transações de cartão externo"
+        indexes = [models.Index(fields=["status", "updated_at"])]
+
+    def clean(self):
+        if self.sale_id and self.sale.payment_method != Sale.PaymentMethod.CARD_EXTERNAL:
+            raise ValidationError({"sale": "A transação precisa estar vinculada a uma venda de cartão externo."})
+        if self.sale_id and self.amount_cents != int(self.sale.total_amount * 100):
+            raise ValidationError({"amount_cents": "O valor da transação precisa ser igual ao total da venda."})
+
+    def reconcile(self, user):
+        if self.status == self.Status.RECONCILED:
+            return False
+        if self.status != self.Status.APPROVED:
+            raise ValidationError("Somente transações aprovadas podem ser conciliadas.")
+        self.status = self.Status.RECONCILED
+        self.reconciled_by = user
+        from django.utils import timezone
+        self.reconciled_at = timezone.now()
+        self.save(update_fields=["status", "reconciled_by", "reconciled_at", "updated_at"])
+        return True
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"Cartão externo #{self.external_id}"
