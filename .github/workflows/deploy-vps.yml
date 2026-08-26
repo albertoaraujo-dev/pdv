@@ -69,6 +69,7 @@ jobs:
           docker compose --env-file .env.staging -f docker-compose.staging.yml build --pull backend migrate frontend
           docker compose --env-file .env.staging -f docker-compose.staging.yml run --rm migrate
           docker compose --env-file .env.staging -f docker-compose.staging.yml up -d backend frontend proxy
+          docker compose --env-file .env.staging -f docker-compose.staging.yml up -d --force-recreate --no-deps proxy
           docker compose --env-file .env.staging -f docker-compose.staging.yml ps
           curl --fail --silent --show-error https://ligara.online/health/ >/dev/null
           REMOTE_SCRIPT
