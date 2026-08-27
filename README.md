@@ -75,6 +75,7 @@ docker compose restart frontend
 - Fase 4 de API base com DRF concluída e validada.
 - Fase 5 de painel administrativo em evolução contínua, com escopo por organização/loja e gestão de acessos.
 - Fase 6 de PDV operacional em andamento, com vendas persistidas, pagamentos manuais, troco, idempotência e resumo da venda.
+- Fundação da Fase 9A de billing SaaS: planos, assinaturas, faturas, pagamentos manuais e eventos de provedor são separados do domínio de vendas.
 
 ## Observações
 
@@ -112,3 +113,11 @@ AbacatePay webhook. Register the public endpoint over HTTPS and subscribe to
 
 For sandbox testing only, set `ABACATEPAY_ALLOW_SIMULATION=True`. Keep it
 disabled in production with real payment credentials.
+
+## Billing SaaS (Fase 9A)
+
+Billing é separado de `SalePayment`, `CardPaymentTransaction` e seus webhooks. No MVP, o
+administrador global registra pagamentos manuais pela ação da fatura no Django Admin;
+isso marca a fatura como paga e a assinatura como ativa. Organizações podem operar sem
+gateway configurado. Operadores e administradores de uma organização não podem alterar
+billing. Dados históricos permanecem preservados quando uma assinatura é suspensa.

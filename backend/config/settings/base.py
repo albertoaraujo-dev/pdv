@@ -58,6 +58,11 @@ def can_view_inventory_menu(request):
     return bool(profile and profile.role in {"admin", "manager"})
 
 
+def can_view_billing_menu(request):
+    user = getattr(request, "user", None)
+    return bool(user and user.is_authenticated and user.is_superuser)
+
+
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-only-secret-key")
 DEBUG = env_bool("DJANGO_DEBUG", False)
 ALLOWED_HOSTS = [host.strip() for host in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if host.strip()]
@@ -78,6 +83,7 @@ INSTALLED_APPS = [
     "apps.catalog.apps.CatalogConfig",
     "apps.sales.apps.SalesConfig",
     "apps.inventory.apps.InventoryConfig",
+    "apps.billing.apps.BillingConfig",
 ]
 
 MIDDLEWARE = [
@@ -250,6 +256,12 @@ UNFOLD = {
                         "icon": "inventory_2",
                         "link": reverse_lazy("admin:inventory_stock_changelist"),
                         "permission": can_view_inventory_menu,
+                    },
+                    {
+                        "title": _("Billing SaaS"),
+                        "icon": "receipt_long",
+                        "link": reverse_lazy("admin:billing_subscription_changelist"),
+                        "permission": can_view_billing_menu,
                     },
                     {
                         "title": _("Movimentações de estoque"),
