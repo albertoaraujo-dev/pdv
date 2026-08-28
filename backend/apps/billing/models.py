@@ -8,6 +8,23 @@ from django.db import models
 from apps.tenants.models import Organization
 
 
+class Module(models.Model):
+    code = models.SlugField("código", max_length=64, unique=True)
+    name = models.CharField("nome", max_length=120)
+    description = models.TextField("descrição", blank=True)
+    is_active = models.BooleanField("ativo", default=True)
+    created_at = models.DateTimeField("criado em", auto_now_add=True)
+    updated_at = models.DateTimeField("atualizado em", auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name = "módulo"
+        verbose_name_plural = "módulos"
+
+    def __str__(self):
+        return f"{self.name} ({self.code})"
+
+
 class Plan(models.Model):
     code = models.SlugField("código", max_length=64, unique=True)
     name = models.CharField("nome", max_length=120)
@@ -25,6 +42,32 @@ class Plan(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class PlanModule(models.Model):
+    plan = models.ForeignKey(Plan, on_delete=models.CASCADE, related_name="plan_modules", verbose_name="plano")
+    module = models.ForeignKey(Module, on_delete=models.PROTECT, related_name="plan_modules", verbose_name="módulo")
+    included = models.BooleanField("incluído", default=True)
+    limits = models.JSONField("limites", null=True, blank=True)
+
+    class Meta:
+        ordering = ["plan__name", "module__name"]
+        constraints = [models.UniqueConstraint(fields=["plan", "module"], name="unique_module_per_plan")]
+        verbose_name = "módulo do plano"
+        verbose_name_plural = "módulos dos planos"
+
+    def __str__(self):
+        return f"{self.plan} - {self.module}"
+
+    def clean(self):
+        if self._state.adding and self.plan_id and self.module_id and (not self.plan.is_active or not self.module.is_active):
+            raise ValidationError("Um módulo de plano precisa usar plano e módulo ativos.")
+        if self.limits is not None and not isinstance(self.limits, dict):
+            raise ValidationError({"limits": "Os limites precisam ser um objeto JSON."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
 
 
 class Subscription(models.Model):
@@ -56,6 +99,65 @@ class Subscription(models.Model):
 
     def __str__(self):
         return f"{self.organization} - {self.plan}"
+
+    def clean(self):
+        if self.status in (self.Status.TRIAL, self.Status.ACTIVE) and self.organization_id and self.plan_id:
+            errors = {}
+            if not self.organization.is_active:
+                errors["organization"] = "Uma assinatura ativa precisa pertencer a uma organização ativa."
+            if not self.plan.is_active:
+                errors["plan"] = "Uma assinatura ativa precisa usar um plano ativo."
+            if errors:
+                raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+
+class SubscriptionModule(models.Model):
+    organization = models.ForeignKey(Organization, on_delete=models.PROTECT, related_name="billing_subscription_modules", verbose_name="organização")
+    subscription = models.ForeignKey(Subscription, on_delete=models.PROTECT, related_name="subscription_modules", verbose_name="assinatura")
+    module = models.ForeignKey(Module, on_delete=models.PROTECT, related_name="subscription_modules", verbose_name="módulo")
+    included = models.BooleanField("incluído", default=True)
+    is_active = models.BooleanField("ativo", default=True)
+    starts_at = models.DateTimeField("inicia em", null=True, blank=True)
+    ends_at = models.DateTimeField("termina em", null=True, blank=True)
+    limits = models.JSONField("limites", null=True, blank=True)
+    created_at = models.DateTimeField("criado em", auto_now_add=True)
+    updated_at = models.DateTimeField("atualizado em", auto_now=True)
+
+    class Meta:
+        ordering = ["organization__name", "module__name"]
+        constraints = [models.UniqueConstraint(fields=["subscription", "module"], name="unique_module_per_subscription")]
+        indexes = [models.Index(fields=["organization", "is_active", "starts_at", "ends_at"])]
+        verbose_name = "módulo da assinatura"
+        verbose_name_plural = "módulos das assinaturas"
+
+    def clean(self):
+        errors = {}
+        if self.subscription_id and self.organization_id and self.subscription.organization_id != self.organization_id:
+            errors["organization"] = "A organização precisa ser a mesma da assinatura."
+        if self.is_active and self.subscription_id and self.module_id and self.organization_id:
+            if (
+                not self.organization.is_active
+                or self.subscription.status not in (Subscription.Status.TRIAL, Subscription.Status.ACTIVE)
+                or not self.module.is_active
+            ):
+                errors["is_active"] = "Um módulo de assinatura ativo precisa usar organização, assinatura e módulo ativos."
+        if self.starts_at and self.ends_at and self.ends_at <= self.starts_at:
+            errors["ends_at"] = "O fim precisa ser posterior ao início."
+        if self.limits is not None and not isinstance(self.limits, dict):
+            errors["limits"] = "Os limites precisam ser um objeto JSON."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.organization} - {self.module}"
 
 
 class SubscriptionInvoice(models.Model):

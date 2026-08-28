@@ -168,6 +168,18 @@ class TenantScopedAdminMixin:
         super().save_model(request, obj, form, change)
 
 
+class NoDeleteAdminMixin:
+    """Business records are retired through their active status, not deleted."""
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        actions.pop("delete_selected", None)
+        return actions
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
 class UserProfileRoleFilter(admin.SimpleListFilter):
     title = "perfil"
     parameter_name = "profile_role"
@@ -344,7 +356,7 @@ class UserAdmin(DjangoUserAdmin, ModelAdmin):
 
 
 @admin.register(Organization)
-class OrganizationAdmin(ModelAdmin):
+class OrganizationAdmin(NoDeleteAdminMixin, ModelAdmin):
     change_form_show_cancel_button = True
     list_display = ["name", "document", "active_stores_count", "is_active", "created_at"]
     list_display_links = ["name"]
@@ -413,12 +425,9 @@ class OrganizationAdmin(ModelAdmin):
     def has_add_permission(self, request):
         return request.user.is_superuser
 
-    def has_delete_permission(self, request, obj=None):
-        return request.user.is_superuser
-
 
 @admin.register(Store)
-class StoreAdmin(TenantScopedAdminMixin, ModelAdmin):
+class StoreAdmin(NoDeleteAdminMixin, TenantScopedAdminMixin, ModelAdmin):
     list_display = ["name", "code", "organization", "active_users_count", "is_active"]
     list_display_links = ["name", "code"]
     list_filter = ["organization", "is_active"]
@@ -452,7 +461,7 @@ class StoreAdmin(TenantScopedAdminMixin, ModelAdmin):
 
 
 @admin.register(UserProfile)
-class UserProfileAdmin(TenantScopedAdminMixin, ModelAdmin):
+class UserProfileAdmin(NoDeleteAdminMixin, TenantScopedAdminMixin, ModelAdmin):
     list_display = ["user", "organization", "role", "must_change_password", "is_active"]
     list_display_links = ["user"]
     list_filter = ["organization", "role", "is_active"]
@@ -486,12 +495,9 @@ class UserProfileAdmin(TenantScopedAdminMixin, ModelAdmin):
             return True
         return get_manageable_profiles(request.user).filter(pk=obj.pk).exists()
 
-    def has_delete_permission(self, request, obj=None):
-        return request.user.is_superuser
-
 
 @admin.register(UserStoreAccess)
-class UserStoreAccessAdmin(TenantScopedAdminMixin, ModelAdmin):
+class UserStoreAccessAdmin(NoDeleteAdminMixin, TenantScopedAdminMixin, ModelAdmin):
     list_display = ["profile", "store", "is_active"]
     list_display_links = ["profile", "store"]
     list_filter = ["store__organization", "store", "is_active"]
@@ -527,6 +533,3 @@ class UserStoreAccessAdmin(TenantScopedAdminMixin, ModelAdmin):
         if obj is None:
             return True
         return get_manageable_profiles(request.user).filter(pk=obj.profile_id).exists()
-
-    def has_delete_permission(self, request, obj=None):
-        return request.user.is_superuser

@@ -362,11 +362,22 @@ class CatalogAdminScopeTests(TestCase):
         self.assertNotIn("delete_selected", category_admin.get_actions(self.request_for(self.manager)))
         self.assertNotIn("delete_selected", product_admin.get_actions(self.request_for(self.manager)))
 
-    def test_superuser_catalog_actions_keep_bulk_delete(self):
+    def test_superuser_catalog_actions_hide_bulk_delete(self):
         superuser = get_user_model().objects.create_superuser(username="root", password="test-pass")
         category_admin = CategoryAdmin(Category, admin.site)
 
-        self.assertIn("delete_selected", category_admin.get_actions(self.request_for(superuser)))
+        self.assertNotIn("delete_selected", category_admin.get_actions(self.request_for(superuser)))
+
+    def test_catalog_business_records_cannot_be_deleted(self):
+        superuser = get_user_model().objects.create_superuser(username="root", password="test-pass")
+        request = self.request_for(superuser)
+
+        for model_admin, obj in (
+            (CategoryAdmin(Category, admin.site), self.first_category),
+            (UnitAdmin(Unit, admin.site), self.first_unit),
+            (ProductAdmin(Product, admin.site), self.first_product),
+        ):
+            self.assertFalse(model_admin.has_delete_permission(request, obj))
 
     def test_category_admin_can_activate_selected_categories(self):
         category = Category.objects.create(organization=self.first_org, name="Livre", is_active=False)

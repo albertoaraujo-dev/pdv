@@ -24,6 +24,24 @@ class TenantModelTests(TestCase):
         with self.assertRaises(ValidationError):
             UserStoreAccess.objects.create(profile=profile, store=store)
 
+    def test_active_tenant_children_require_active_parents(self):
+        organization = Organization.objects.create(name="Inativa", is_active=False)
+        user = get_user_model().objects.create_user(username="operator", password="test-pass")
+
+        with self.assertRaises(ValidationError):
+            Store.objects.create(organization=organization, name="Filial", code="F01")
+        with self.assertRaises(ValidationError):
+            UserProfile.objects.create(user=user, organization=organization)
+
+    def test_active_store_access_requires_active_profile_and_store(self):
+        organization = Organization.objects.create(name="Empresa")
+        user = get_user_model().objects.create_user(username="operator", password="test-pass")
+        profile = UserProfile.objects.create(user=user, organization=organization, is_active=False)
+        store = Store.objects.create(organization=organization, name="Filial", code="F01", is_active=False)
+
+        with self.assertRaises(ValidationError):
+            UserStoreAccess.objects.create(profile=profile, store=store)
+
     def test_active_queryset_filters_active_records(self):
         Organization.objects.create(name="Ativa")
         Organization.objects.create(name="Inativa", is_active=False)
@@ -145,11 +163,23 @@ class TenantAdminScopeTests(TestCase):
         self.assertNotIn("delete_selected", StoreAdmin(Store, admin.site).get_actions(request))
         self.assertNotIn("delete_selected", UserAdmin(get_user_model(), admin.site).get_actions(request))
 
-    def test_superuser_management_actions_keep_bulk_delete(self):
+    def test_superuser_management_actions_hide_bulk_delete(self):
         superuser = get_user_model().objects.create_superuser(username="root", password="test-pass")
         request = self.request_for(superuser)
 
-        self.assertIn("delete_selected", StoreAdmin(Store, admin.site).get_actions(request))
+        self.assertNotIn("delete_selected", StoreAdmin(Store, admin.site).get_actions(request))
+
+    def test_management_business_records_cannot_be_deleted(self):
+        superuser = get_user_model().objects.create_superuser(username="root", password="test-pass")
+        request = self.request_for(superuser)
+
+        for model_admin, obj in (
+            (OrganizationAdmin(Organization, admin.site), self.first_org),
+            (StoreAdmin(Store, admin.site), self.first_store),
+            (UserProfileAdmin(UserProfile, admin.site), self.operator_profile),
+            (UserStoreAccessAdmin(UserStoreAccess, admin.site), self.operator_access),
+        ):
+            self.assertFalse(model_admin.has_delete_permission(request, obj))
 
     def test_manager_only_sees_allowed_stores_in_admin(self):
         model_admin = StoreAdmin(Store, admin.site)

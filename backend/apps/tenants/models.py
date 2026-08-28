@@ -58,6 +58,14 @@ class Store(models.Model):
     def __str__(self):
         return f"{self.organization} - {self.name}"
 
+    def clean(self):
+        if self.is_active and self.organization_id and not self.organization.is_active:
+            raise ValidationError("Uma loja ativa precisa pertencer a uma organização ativa.")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
 
 class UserProfile(models.Model):
     class Role(models.TextChoices):
@@ -86,6 +94,14 @@ class UserProfile(models.Model):
     def __str__(self):
         return f"{self.user} ({self.get_role_display()})"
 
+    def clean(self):
+        if self.is_active and self.organization_id and not self.organization.is_active:
+            raise ValidationError("Um perfil ativo precisa pertencer a uma organização ativa.")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
 
 class UserStoreAccess(models.Model):
     profile = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name="store_accesses", verbose_name="perfil")
@@ -109,8 +125,14 @@ class UserStoreAccess(models.Model):
         indexes = [models.Index(fields=["store", "is_active"])]
 
     def clean(self):
+        errors = {}
         if self.profile_id and self.store_id and self.profile.organization_id != self.store.organization_id:
-            raise ValidationError("A loja precisa pertencer à mesma organização do usuário.")
+            errors["store"] = "A loja precisa pertencer à mesma organização do usuário."
+        if self.is_active and self.profile_id and self.store_id:
+            if not self.profile.is_active or not self.profile.organization.is_active:
+                errors["is_active"] = "Um acesso ativo precisa usar perfil e organização ativos."
+        if errors:
+            raise ValidationError(errors)
 
     def save(self, *args, **kwargs):
         self.full_clean()

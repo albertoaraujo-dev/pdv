@@ -2,12 +2,110 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from .models import BillingPayment, BillingProviderEvent, Subscription, SubscriptionInvoice
+from apps.accounts.policies import get_user_profile
+
+from .models import BillingPayment, BillingProviderEvent, Module, PlanModule, Subscription, SubscriptionInvoice, SubscriptionModule
 
 
 def _require_global_admin(actor):
     if not actor or not actor.is_authenticated or not actor.is_active or not actor.is_superuser:
         raise PermissionDenied("Somente o administrador global pode alterar o billing.")
+
+
+def _get_subscription(organization):
+    try:
+        subscription = organization.billing_subscription
+    except Subscription.DoesNotExist:
+        return None
+    now = timezone.now()
+    if not organization.is_active or subscription.status not in (Subscription.Status.ACTIVE, Subscription.Status.TRIAL):
+        return None
+    if subscription.status == Subscription.Status.TRIAL and subscription.trial_ends_at and subscription.trial_ends_at <= now:
+        return None
+    return subscription
+
+
+def _effective_module_rows(organization):
+    subscription = _get_subscription(organization)
+    if not subscription:
+        return []
+    now = timezone.now()
+    plan_rows = {row.module_id: row for row in PlanModule.objects.select_related("module").filter(plan=subscription.plan, plan__is_active=True, included=True, module__is_active=True)}
+    overrides = SubscriptionModule.objects.select_related("module").filter(subscription=subscription, module__is_active=True)
+    for row in overrides:
+        if not row.included or not row.is_active or (row.starts_at and row.starts_at > now) or (row.ends_at and row.ends_at <= now):
+            plan_rows.pop(row.module_id, None)
+        else:
+            plan_rows[row.module_id] = row
+    return list(plan_rows.values())
+
+
+def get_active_modules(organization):
+    module_ids = [row.module_id for row in _effective_module_rows(organization)]
+    return Module.objects.filter(pk__in=module_ids, is_active=True)
+
+
+def has_module(organization, code):
+    return get_active_modules(organization).filter(code=code).exists()
+
+
+def require_module(organization, code):
+    module = get_active_modules(organization).filter(code=code).first()
+    if not module:
+        raise PermissionDenied(f"O módulo '{code}' não está disponível para esta organização.")
+    return module
+
+
+def get_module_limits(organization, code):
+    module = require_module(organization, code)
+    rows = _effective_module_rows(organization)
+    row = next(row for row in rows if row.module_id == module.pk)
+    if isinstance(row, SubscriptionModule):
+        plan_limits = PlanModule.objects.filter(plan=_get_subscription(organization).plan, module=module).values_list("limits", flat=True).first() or {}
+        return {**plan_limits, **(row.limits or {})}
+    return row.limits or {}
+
+
+def get_module_limit(organization, code, key, default=None):
+    return get_module_limits(organization, code).get(key, default)
+
+
+def _require_module_manager(actor, organization):
+    if actor and actor.is_authenticated and actor.is_active and actor.is_superuser:
+        return
+    profile = get_user_profile(actor)
+    if not profile or profile.organization_id != organization.pk or not profile.is_active or profile.role != profile.Role.MANAGER:
+        raise PermissionDenied("Somente um gerente da organização ou o administrador global pode alterar módulos.")
+
+
+@transaction.atomic
+def add_subscription_module(subscription, module, *, actor, starts_at=None, ends_at=None, limits=None):
+    subscription = Subscription.objects.select_for_update().select_related("organization").get(pk=subscription.pk)
+    _require_module_manager(actor, subscription.organization)
+    module = Module.objects.get(pk=module.pk)
+    if not module.is_active:
+        raise ValidationError("Não é possível adicionar um módulo inativo.")
+    row, _created = SubscriptionModule.objects.get_or_create(
+        subscription=subscription,
+        module=module,
+        defaults={"organization": subscription.organization, "included": True, "starts_at": starts_at, "ends_at": ends_at, "limits": limits},
+    )
+    if not _created:
+        row.organization = subscription.organization
+        row.included, row.is_active, row.starts_at, row.ends_at, row.limits = True, True, starts_at, ends_at, limits
+        row.save()
+    return row
+
+
+@transaction.atomic
+def remove_subscription_module(subscription, module, *, actor):
+    subscription = Subscription.objects.select_for_update().select_related("organization").get(pk=subscription.pk)
+    _require_module_manager(actor, subscription.organization)
+    row = SubscriptionModule.objects.get(subscription=subscription, module=module)
+    row.is_active = False
+    row.ends_at = row.ends_at or timezone.now()
+    row.save(update_fields=["is_active", "ends_at", "updated_at"])
+    return row
 
 
 @transaction.atomic

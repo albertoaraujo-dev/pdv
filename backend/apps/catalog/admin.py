@@ -8,7 +8,7 @@ from unfold.admin import ModelAdmin
 from unfold.contrib.filters.admin import BooleanRadioFilter, DropdownFilter
 from unfold.widgets import UnfoldAdminTextInputWidget
 
-from apps.tenants.admin import TenantScopedAdminMixin, get_user_organization
+from apps.tenants.admin import NoDeleteAdminMixin, TenantScopedAdminMixin, get_user_organization
 
 from .models import Category, Product, Unit
 
@@ -168,7 +168,7 @@ class CatalogStatusActionsMixin:
 
 
 @admin.register(Category)
-class CategoryAdmin(CatalogStatusActionsMixin, SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelAdmin):
+class CategoryAdmin(NoDeleteAdminMixin, CatalogStatusActionsMixin, SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelAdmin):
     status_noun_singular = "categoria"
     status_noun_plural = "categorias"
     status_noun_gender = "feminine"
@@ -211,7 +211,7 @@ class CategoryAdmin(CatalogStatusActionsMixin, SimpleCatalogSaveActionsMixin, Te
 
 
 @admin.register(Unit)
-class UnitAdmin(CatalogStatusActionsMixin, SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelAdmin):
+class UnitAdmin(NoDeleteAdminMixin, CatalogStatusActionsMixin, SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelAdmin):
     status_noun_singular = "unidade"
     status_noun_plural = "unidades"
     status_noun_gender = "feminine"
@@ -254,7 +254,7 @@ class UnitAdmin(CatalogStatusActionsMixin, SimpleCatalogSaveActionsMixin, Tenant
 
 
 @admin.register(Product)
-class ProductAdmin(SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelAdmin):
+class ProductAdmin(NoDeleteAdminMixin, SimpleCatalogSaveActionsMixin, TenantScopedAdminMixin, ModelAdmin):
     actions = ["activate_products", "deactivate_products"]
     autocomplete_fields = ["category", "unit"]
     list_display = ["name", "sku", "organization", "category", "unit", "formatted_price", "is_active"]

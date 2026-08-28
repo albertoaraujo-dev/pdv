@@ -76,6 +76,8 @@ docker compose restart frontend
 - Fase 5 de painel administrativo em evolução contínua, com escopo por organização/loja e gestão de acessos.
 - Fase 6 de PDV operacional em andamento, com vendas persistidas, pagamentos manuais, troco, idempotência e resumo da venda.
 - Fundação da Fase 9A de billing SaaS: planos, assinaturas, faturas, pagamentos manuais e eventos de provedor são separados do domínio de vendas.
+- Billing modular no MVP: catálogo de módulos ativos, módulos incluídos por plano, limites JSON e add-ons/overrides por assinatura.
+- A disponibilidade é decidida no backend: somente assinaturas `trial` não expiradas ou `active` liberam módulos; `past_due`, `suspended` e `cancelled` não liberam.
 
 ## Observações
 
@@ -121,3 +123,13 @@ administrador global registra pagamentos manuais pela ação da fatura no Django
 isso marca a fatura como paga e a assinatura como ativa. Organizações podem operar sem
 gateway configurado. Operadores e administradores de uma organização não podem alterar
 billing. Dados históricos permanecem preservados quando uma assinatura é suspensa.
+
+Módulos são administrados no Django Admin, sempre restrito ao superusuário global. Gerentes podem adicionar ou remover add-ons somente pelo serviço backend, com validação de organização, período e limites; o frontend não é uma camada de autorização.
+
+Modelo comercial de módulos:
+
+- `core` é obrigatório e gratuito para toda organização.
+- `catalog` acompanha o `core` e não é vendido isoladamente, pois é necessário para um produto utilizável.
+- `sales` (PDV) é o primeiro módulo vendável e depende de `catalog`.
+- `inventory`, `cash`, `reports`, `customers`, `finance`, `delivery` e outros são módulos PLUS, vendidos no plano ou como add-ons.
+- Dependências, módulos ativos e limites devem ser validados no backend; dados históricos não são apagados quando um módulo é removido.

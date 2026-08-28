@@ -2,7 +2,9 @@ from django.contrib import admin, messages
 from django.utils import timezone
 from unfold.admin import ModelAdmin
 
-from .models import BillingPayment, BillingProviderEvent, Plan, Subscription, SubscriptionInvoice
+from apps.tenants.admin import NoDeleteAdminMixin
+
+from .models import BillingPayment, BillingProviderEvent, Module, Plan, PlanModule, Subscription, SubscriptionInvoice, SubscriptionModule
 from .services import record_manual_invoice_payment
 
 
@@ -28,15 +30,39 @@ class GlobalBillingAdminMixin:
 
 
 @admin.register(Plan)
-class PlanAdmin(GlobalBillingAdminMixin, ModelAdmin):
+class PlanAdmin(NoDeleteAdminMixin, GlobalBillingAdminMixin, ModelAdmin):
     list_display = ["code", "name", "monthly_price", "trial_days", "is_active"]
     list_filter = ["is_active"]
     search_fields = ["code", "name"]
     readonly_fields = ["created_at", "updated_at"]
 
 
+@admin.register(Module)
+class ModuleAdmin(NoDeleteAdminMixin, GlobalBillingAdminMixin, ModelAdmin):
+    list_display = ["code", "name", "is_active", "updated_at"]
+    list_filter = ["is_active"]
+    search_fields = ["code", "name"]
+    readonly_fields = ["created_at", "updated_at"]
+
+
+@admin.register(PlanModule)
+class PlanModuleAdmin(NoDeleteAdminMixin, GlobalBillingAdminMixin, ModelAdmin):
+    list_display = ["plan", "module", "included", "limits"]
+    list_filter = ["included", "plan"]
+    search_fields = ["plan__name", "module__code", "module__name"]
+
+
+@admin.register(SubscriptionModule)
+class SubscriptionModuleAdmin(NoDeleteAdminMixin, GlobalBillingAdminMixin, ModelAdmin):
+    list_display = ["organization", "subscription", "module", "included", "is_active", "starts_at", "ends_at", "limits"]
+    list_filter = ["is_active", "module"]
+    search_fields = ["organization__name", "module__code", "module__name"]
+    readonly_fields = ["created_at", "updated_at"]
+    list_select_related = ["organization", "subscription", "module"]
+
+
 @admin.register(Subscription)
-class SubscriptionAdmin(GlobalBillingAdminMixin, ModelAdmin):
+class SubscriptionAdmin(NoDeleteAdminMixin, GlobalBillingAdminMixin, ModelAdmin):
     list_display = ["organization", "plan", "status", "gateway_provider", "current_period_end", "updated_at"]
     list_filter = ["status", "plan", "gateway_provider"]
     search_fields = ["organization__name", "organization__document", "public_id"]
@@ -52,7 +78,7 @@ class SubscriptionAdmin(GlobalBillingAdminMixin, ModelAdmin):
 
 
 @admin.register(SubscriptionInvoice)
-class SubscriptionInvoiceAdmin(GlobalBillingAdminMixin, ModelAdmin):
+class SubscriptionInvoiceAdmin(NoDeleteAdminMixin, GlobalBillingAdminMixin, ModelAdmin):
     list_display = ["number", "organization", "amount", "status", "due_date", "paid_at"]
     list_filter = ["status", "due_date"]
     search_fields = ["number", "organization__name", "organization__document", "public_id"]
@@ -73,7 +99,7 @@ class SubscriptionInvoiceAdmin(GlobalBillingAdminMixin, ModelAdmin):
 
 
 @admin.register(BillingPayment)
-class BillingPaymentAdmin(GlobalBillingAdminMixin, ModelAdmin):
+class BillingPaymentAdmin(NoDeleteAdminMixin, GlobalBillingAdminMixin, ModelAdmin):
     list_display = ["invoice", "organization", "amount", "method", "paid_at", "recorded_by"]
     list_filter = ["method", "paid_at"]
     search_fields = ["invoice__number", "organization__name", "idempotency_key", "provider_payment_id"]
@@ -82,7 +108,7 @@ class BillingPaymentAdmin(GlobalBillingAdminMixin, ModelAdmin):
 
 
 @admin.register(BillingProviderEvent)
-class BillingProviderEventAdmin(GlobalBillingAdminMixin, ModelAdmin):
+class BillingProviderEventAdmin(NoDeleteAdminMixin, GlobalBillingAdminMixin, ModelAdmin):
     list_display = ["event_id", "provider", "event_type", "organization", "invoice", "processed_at", "created_at"]
     list_filter = ["provider", "event_type", "processed_at"]
     search_fields = ["event_id", "provider", "event_type", "organization__name"]

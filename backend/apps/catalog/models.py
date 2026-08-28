@@ -46,6 +46,8 @@ class Category(models.Model):
     def clean(self):
         errors = {}
         strip_text_fields(self, ["name"])
+        if self.is_active and self.organization_id and not self.organization.is_active:
+            errors["is_active"] = "Uma categoria ativa precisa pertencer a uma organização ativa."
         duplicate = Category.objects.filter(organization_id=self.organization_id, name__iexact=self.name)
         if self.pk:
             duplicate = duplicate.exclude(pk=self.pk)
@@ -91,6 +93,8 @@ class Unit(models.Model):
         errors = {}
         strip_text_fields(self, ["name", "symbol"])
         uppercase_text_fields(self, ["symbol"])
+        if self.is_active and self.organization_id and not self.organization.is_active:
+            errors["is_active"] = "Uma unidade ativa precisa pertencer a uma organização ativa."
         duplicate = Unit.objects.filter(organization_id=self.organization_id, symbol=self.symbol)
         if self.pk:
             duplicate = duplicate.exclude(pk=self.pk)
@@ -152,6 +156,8 @@ class Product(models.Model):
         if self.unit_id and self.unit.organization_id != self.organization_id:
             errors["unit"] = "A unidade precisa pertencer à mesma organização do produto."
         active_relation_errors = []
+        if self.is_active and self.organization_id and not self.organization.is_active:
+            active_relation_errors.append("Produto ativo precisa pertencer a uma organização ativa.")
         if self.is_active and self.category_id and not self.category.is_active:
             active_relation_errors.append("Produto ativo precisa usar uma categoria ativa.")
         if self.is_active and self.unit_id and not self.unit.is_active:
