@@ -425,6 +425,13 @@ class OrganizationAdmin(NoDeleteAdminMixin, ModelAdmin):
     def has_add_permission(self, request):
         return request.user.is_superuser
 
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        if not change:
+            from apps.billing.services import provision_organization_subscription
+
+            provision_organization_subscription(obj)
+
 
 @admin.register(Store)
 class StoreAdmin(NoDeleteAdminMixin, TenantScopedAdminMixin, ModelAdmin):

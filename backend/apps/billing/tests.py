@@ -11,7 +11,7 @@ from apps.tenants.models import Organization, UserProfile
 
 from .admin import ModuleAdmin, PlanAdmin, PlanModuleAdmin, SubscriptionAdmin, SubscriptionModuleAdmin, SubscriptionInvoiceAdmin
 from .models import BillingPayment, BillingProviderEvent, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionInvoice, SubscriptionModule
-from .services import add_subscription_module, get_module_limit, get_module_limits, get_active_modules, has_module, record_manual_invoice_payment, record_provider_event, require_module
+from .services import add_subscription_module, get_module_limit, get_module_limits, get_active_modules, has_module, provision_organization_subscription, record_manual_invoice_payment, record_provider_event, require_module
 
 
 class BillingTests(TestCase):
@@ -33,6 +33,49 @@ class BillingTests(TestCase):
         self.reports = Module.objects.create(code="reports", name="Relatórios")
         self.addon = Module.objects.create(code="addon", name="Addon")
         self.factory = RequestFactory()
+
+    def test_provisioning_creates_trial_with_sales_and_base_modules(self):
+        organization = Organization.objects.create(name="Nova")
+
+        subscription = provision_organization_subscription(organization)
+
+        self.assertEqual(subscription.status, Subscription.Status.TRIAL)
+        self.assertEqual(subscription.plan.code, "mvp")
+        self.assertEqual(subscription.gateway_provider, "")
+        self.assertTrue(has_module(organization, "core"))
+        self.assertTrue(has_module(organization, "catalog"))
+        self.assertTrue(has_module(organization, "sales"))
+
+    def test_provisioning_is_idempotent(self):
+        organization = Organization.objects.create(name="Nova")
+
+        first = provision_organization_subscription(organization)
+        second = provision_organization_subscription(organization)
+
+        self.assertEqual(first.pk, second.pk)
+        self.assertEqual(Subscription.objects.filter(organization=organization).count(), 1)
+
+    def test_provisioning_ignores_inactive_default_plan(self):
+        default_plan = Plan.objects.get(code="mvp")
+        default_plan.is_active = False
+        default_plan.save(update_fields=["is_active", "updated_at"])
+        fallback = Plan.objects.create(code="mvp-fallback", name="MVP fallback", is_default=True, trial_days=0)
+        PlanModule.objects.create(plan=fallback, module=Module.objects.get(code="sales"))
+        organization = Organization.objects.create(name="Nova")
+
+        subscription = provision_organization_subscription(organization)
+
+        self.assertEqual(subscription.plan, fallback)
+        self.assertEqual(subscription.status, Subscription.Status.ACTIVE)
+
+    def test_provisioning_does_not_share_subscription_between_organizations(self):
+        first = Organization.objects.create(name="Primeira")
+        second = Organization.objects.create(name="Segunda")
+
+        provision_organization_subscription(first)
+
+        self.assertFalse(Subscription.objects.filter(organization=second).exists())
+        self.assertFalse(has_module(second, "sales"))
 
     def request_for(self, user):
         request = self.factory.get("/admin/")

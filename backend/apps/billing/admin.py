@@ -31,8 +31,8 @@ class GlobalBillingAdminMixin:
 
 @admin.register(Plan)
 class PlanAdmin(NoDeleteAdminMixin, GlobalBillingAdminMixin, ModelAdmin):
-    list_display = ["code", "name", "monthly_price", "trial_days", "is_active"]
-    list_filter = ["is_active"]
+    list_display = ["code", "name", "monthly_price", "trial_days", "is_default", "is_active"]
+    list_filter = ["is_default", "is_active"]
     search_fields = ["code", "name"]
     readonly_fields = ["created_at", "updated_at"]
 

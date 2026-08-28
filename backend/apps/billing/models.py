@@ -67,11 +67,19 @@ class Plan(models.Model):
     monthly_price = models.DecimalField("preço mensal", max_digits=12, decimal_places=2, default=Decimal("0.00"))
     trial_days = models.PositiveIntegerField("dias de trial", default=0)
     is_active = models.BooleanField("ativo", default=True)
+    is_default = models.BooleanField("plano padrão", default=False)
     created_at = models.DateTimeField("criado em", auto_now_add=True)
     updated_at = models.DateTimeField("atualizado em", auto_now=True)
 
     class Meta:
         ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["is_default"],
+                condition=models.Q(is_default=True, is_active=True),
+                name="unique_active_default_plan",
+            )
+        ]
         verbose_name = "plano"
         verbose_name_plural = "planos"
 

@@ -1,14 +1,44 @@
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
+from datetime import timedelta
 from django.utils import timezone
 
 from apps.accounts.policies import get_user_profile
+from apps.tenants.models import Organization
 
-from .models import BillingPayment, BillingProviderEvent, Module, ModuleDependency, PlanModule, Subscription, SubscriptionInvoice, SubscriptionModule
+from .models import BillingPayment, BillingProviderEvent, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionInvoice, SubscriptionModule
 
 
 BASE_MODULE_CODES = ("core", "catalog")
 REQUIRED_MODULE_CODES = {"sales": "catalog"}
+
+
+@transaction.atomic
+def provision_organization_subscription(organization):
+    """Create the initial no-charge subscription, without changing existing billing."""
+    organization = Organization.objects.select_for_update().get(pk=organization.pk)
+    try:
+        return organization.billing_subscription
+    except Subscription.DoesNotExist:
+        pass
+
+    plan = Plan.objects.filter(is_active=True, is_default=True).first()
+    if not plan:
+        raise ValidationError("Nenhum plano padrão ativo está configurado.")
+    if not PlanModule.objects.filter(plan=plan, module__code="sales", included=True, module__is_active=True).exists():
+        raise ValidationError("O plano padrão ativo precisa incluir o módulo sales.")
+
+    now = timezone.now()
+    status = Subscription.Status.TRIAL if plan.trial_days else Subscription.Status.ACTIVE
+    subscription = Subscription.objects.create(
+        organization=organization,
+        plan=plan,
+        status=status,
+        started_at=now,
+        trial_ends_at=now + timedelta(days=plan.trial_days) if plan.trial_days else None,
+        current_period_start=now.date(),
+    )
+    return subscription
 
 
 def _require_global_admin(actor):

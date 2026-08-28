@@ -78,6 +78,8 @@ docker compose restart frontend
 - Fundação da Fase 9A de billing SaaS: planos, assinaturas, faturas, pagamentos manuais e eventos de provedor são separados do domínio de vendas.
 - Billing modular no MVP: catálogo de módulos ativos, módulos incluídos por plano, limites JSON e add-ons/overrides por assinatura.
 - A disponibilidade é decidida no backend: somente assinaturas `trial` não expiradas ou `active` liberam módulos; `past_due`, `suspended` e `cancelled` não liberam.
+- Novas organizações criadas pelo Admin global recebem uma assinatura trial idempotente do plano padrão ativo (`mvp` na instalação inicial), sem gateway ou cobrança; o plano inclui `sales`, enquanto `core` e `catalog` são base obrigatória.
+- Organizações legadas podem ser regularizadas sem cobrança com `python manage.py provision_subscriptions`; o comando também pode receber `--organization ID` e nunca altera assinaturas existentes.
 
 ## Observações
 
@@ -134,5 +136,7 @@ Modelo comercial de módulos:
 - `inventory`, `cash`, `reports`, `customers`, `finance`, `delivery` e outros são módulos PLUS, vendidos no plano ou como add-ons.
 - Dependências, módulos ativos e limites devem ser validados no backend; dados históricos não são apagados quando um módulo é removido.
 - `core` e `catalog` são módulos base obrigatórios e efetivos em toda assinatura `trial` ou `active`; eles não precisam ser incluídos no plano nem podem ser removidos como add-on.
+- O plano usado na criação é escolhido por `Plan.is_default=True` e `is_active=True`, não por gateway; deve incluir o módulo `sales`.
 - Dependências são registros protegidos em `ModuleDependency`. Um módulo com dependência indisponível não é efetivo, e ciclos são rejeitados na validação.
 - O catálogo inicial de módulos é administrado pelo superusuário no Django Admin; instalações existentes preservam seus registros e podem marcar `core`/`catalog` como módulos base.
+- Há drift conhecido nas migrações de `accounts` em instalações antigas; confirme o estado aplicado antes de promover novas migrações e não remova dados históricos.
