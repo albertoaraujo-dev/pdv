@@ -3,6 +3,7 @@ from decimal import Decimal
 from django.db import transaction
 
 from .models import Stock, StockMovement
+from apps.billing.services import require_module
 
 
 class InsufficientStockError(Exception):
@@ -48,6 +49,7 @@ def reverse_stock_for_sale(sale, user):
 
 @transaction.atomic
 def record_inbound_stock(store, product, quantity, reason, user):
+    require_module(store.organization, "inventory")
     quantity = Decimal(quantity)
     balance, _created = Stock.objects.select_for_update().get_or_create(
         organization=store.organization,

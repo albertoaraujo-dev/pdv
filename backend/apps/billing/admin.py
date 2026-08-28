@@ -4,7 +4,7 @@ from unfold.admin import ModelAdmin
 
 from apps.tenants.admin import NoDeleteAdminMixin
 
-from .models import BillingPayment, BillingProviderEvent, Module, Plan, PlanModule, Subscription, SubscriptionInvoice, SubscriptionModule
+from .models import BillingPayment, BillingProviderEvent, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionInvoice, SubscriptionModule
 from .services import record_manual_invoice_payment
 
 
@@ -43,6 +43,13 @@ class ModuleAdmin(NoDeleteAdminMixin, GlobalBillingAdminMixin, ModelAdmin):
     list_filter = ["is_active"]
     search_fields = ["code", "name"]
     readonly_fields = ["created_at", "updated_at"]
+
+
+@admin.register(ModuleDependency)
+class ModuleDependencyAdmin(NoDeleteAdminMixin, GlobalBillingAdminMixin, ModelAdmin):
+    list_display = ["module", "depends_on", "is_active"]
+    list_filter = ["is_active"]
+    search_fields = ["module__code", "depends_on__code"]
 
 
 @admin.register(PlanModule)

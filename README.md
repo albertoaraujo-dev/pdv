@@ -133,3 +133,6 @@ Modelo comercial de módulos:
 - `sales` (PDV) é o primeiro módulo vendável e depende de `catalog`.
 - `inventory`, `cash`, `reports`, `customers`, `finance`, `delivery` e outros são módulos PLUS, vendidos no plano ou como add-ons.
 - Dependências, módulos ativos e limites devem ser validados no backend; dados históricos não são apagados quando um módulo é removido.
+- `core` e `catalog` são módulos base obrigatórios e efetivos em toda assinatura `trial` ou `active`; eles não precisam ser incluídos no plano nem podem ser removidos como add-on.
+- Dependências são registros protegidos em `ModuleDependency`. Um módulo com dependência indisponível não é efetivo, e ciclos são rejeitados na validação.
+- O catálogo inicial de módulos é administrado pelo superusuário no Django Admin; instalações existentes preservam seus registros e podem marcar `core`/`catalog` como módulos base.

@@ -10,7 +10,7 @@ from django.utils import timezone
 from apps.tenants.models import Organization, UserProfile
 
 from .admin import ModuleAdmin, PlanAdmin, PlanModuleAdmin, SubscriptionAdmin, SubscriptionModuleAdmin, SubscriptionInvoiceAdmin
-from .models import BillingPayment, BillingProviderEvent, Module, Plan, PlanModule, Subscription, SubscriptionInvoice, SubscriptionModule
+from .models import BillingPayment, BillingProviderEvent, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionInvoice, SubscriptionModule
 from .services import add_subscription_module, get_module_limit, get_module_limits, get_active_modules, has_module, record_manual_invoice_payment, record_provider_event, require_module
 
 
@@ -29,7 +29,7 @@ class BillingTests(TestCase):
         UserProfile.objects.create(user=self.operator, organization=self.first_org, role=UserProfile.Role.ADMIN)
         self.manager = get_user_model().objects.create_user(username="manager", password="test-pass", is_staff=True)
         UserProfile.objects.create(user=self.manager, organization=self.first_org, role=UserProfile.Role.MANAGER)
-        self.core = Module.objects.create(code="core", name="Core")
+        self.core, _ = Module.objects.get_or_create(code="core", defaults={"name": "Core", "is_base": True})
         self.reports = Module.objects.create(code="reports", name="Relatórios")
         self.addon = Module.objects.create(code="addon", name="Addon")
         self.factory = RequestFactory()
@@ -123,7 +123,8 @@ class BillingTests(TestCase):
         self.first_subscription.save(update_fields=["status", "updated_at"])
         self.assertTrue(has_module(self.first_org, "core"))
         self.assertEqual(get_module_limit(self.first_org, "core", "users"), 5)
-        self.assertEqual(list(get_active_modules(self.first_org)), [self.core])
+        catalog = Module.objects.get(code="catalog")
+        self.assertEqual(set(get_active_modules(self.first_org)), {self.core, catalog})
 
     def test_subscription_addon_and_override_limits(self):
         PlanModule.objects.create(plan=self.plan, module=self.core, included=True, limits={"users": 5, "stores": 1})
@@ -173,3 +174,54 @@ class BillingTests(TestCase):
     def test_addon_mutation_requires_manager_or_global_admin(self):
         with self.assertRaises(PermissionDenied):
             add_subscription_module(self.first_subscription, self.addon, actor=self.operator)
+
+    def test_base_modules_are_effective_without_plan_rows(self):
+        catalog, _ = Module.objects.get_or_create(code="catalog", defaults={"name": "Catálogo", "is_base": True})
+        self.first_subscription.status = Subscription.Status.ACTIVE
+        self.first_subscription.save(update_fields=["status", "updated_at"])
+
+        self.assertEqual(set(get_active_modules(self.first_org)), {self.core, catalog})
+
+    def test_dependency_is_required_and_cycles_are_rejected(self):
+        catalog, _ = Module.objects.get_or_create(code="catalog", defaults={"name": "Catálogo", "is_base": True})
+        sales, _ = Module.objects.get_or_create(code="sales", defaults={"name": "PDV"})
+        ModuleDependency.objects.get_or_create(module=sales, depends_on=catalog)
+        self.first_subscription.status = Subscription.Status.ACTIVE
+        self.first_subscription.save(update_fields=["status", "updated_at"])
+
+        self.assertFalse(has_module(self.first_org, "sales"))
+        with self.assertRaises(PermissionDenied):
+            require_module(self.first_org, "sales")
+        with self.assertRaises(ValidationError):
+            ModuleDependency.objects.create(module=catalog, depends_on=sales)
+
+    def test_sales_requires_entitlement_and_inactive_organization(self):
+        catalog, _ = Module.objects.get_or_create(code="catalog", defaults={"name": "Catálogo", "is_base": True})
+        sales, _ = Module.objects.get_or_create(code="sales", defaults={"name": "PDV"})
+        ModuleDependency.objects.get_or_create(module=sales, depends_on=catalog)
+        self.first_subscription.status = Subscription.Status.ACTIVE
+        self.first_subscription.save(update_fields=["status", "updated_at"])
+
+        with self.assertRaises(PermissionDenied):
+            require_module(self.first_org, "sales")
+        PlanModule.objects.create(plan=self.plan, module=sales)
+        self.assertTrue(has_module(self.first_org, "sales"))
+        self.first_org.is_active = False
+        self.first_org.save(update_fields=["is_active", "updated_at"])
+        with self.assertRaises(PermissionDenied):
+            require_module(self.first_org, "sales")
+
+    def test_dependency_and_entitlements_are_tenant_scoped(self):
+        catalog, _ = Module.objects.get_or_create(code="catalog", defaults={"name": "Catálogo", "is_base": True})
+        sales, _ = Module.objects.get_or_create(code="sales", defaults={"name": "PDV"})
+        ModuleDependency.objects.get_or_create(module=sales, depends_on=catalog)
+        self.first_subscription.status = Subscription.Status.ACTIVE
+        self.first_subscription.save(update_fields=["status", "updated_at"])
+        PlanModule.objects.create(plan=self.plan, module=sales)
+        other_plan = Plan.objects.create(code="other", name="Outro")
+        self.second_subscription.plan = other_plan
+        self.second_subscription.status = Subscription.Status.ACTIVE
+        self.second_subscription.save(update_fields=["plan", "status", "updated_at"])
+
+        self.assertTrue(has_module(self.first_org, "sales"))
+        self.assertFalse(has_module(self.second_org, "sales"))

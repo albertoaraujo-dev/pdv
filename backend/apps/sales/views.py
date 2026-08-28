@@ -1,11 +1,12 @@
 from django.conf import settings
 from django.db import transaction
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.accounts.policies import can_access_admin, can_access_pos, get_allowed_stores, get_user_organization, is_inactive_for_login
+from apps.billing.services import require_module
 
 from .abacatepay import AbacatePayError, create_transparent, get_transparent, simulate_transparent
 from .models import CardPaymentTransaction, Sale, SalePayment
@@ -18,7 +19,15 @@ from apps.inventory.services import reverse_stock_for_sale
 class CanUseSalesApi(permissions.BasePermission):
     def has_permission(self, request, view):
         user = request.user
-        return bool(user and user.is_authenticated and not is_inactive_for_login(user) and can_access_pos(user))
+        if not (user and user.is_authenticated and not is_inactive_for_login(user) and can_access_pos(user)):
+            return False
+        if user.is_superuser:
+            return True
+        try:
+            require_module(get_user_organization(user), "sales")
+        except PermissionDenied:
+            return False
+        return True
 
 
 class SaleViewSet(viewsets.ModelViewSet):

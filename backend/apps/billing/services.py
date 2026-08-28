@@ -4,7 +4,11 @@ from django.utils import timezone
 
 from apps.accounts.policies import get_user_profile
 
-from .models import BillingPayment, BillingProviderEvent, Module, PlanModule, Subscription, SubscriptionInvoice, SubscriptionModule
+from .models import BillingPayment, BillingProviderEvent, Module, ModuleDependency, PlanModule, Subscription, SubscriptionInvoice, SubscriptionModule
+
+
+BASE_MODULE_CODES = ("core", "catalog")
+REQUIRED_MODULE_CODES = {"sales": "catalog"}
 
 
 def _require_global_admin(actor):
@@ -13,6 +17,8 @@ def _require_global_admin(actor):
 
 
 def _get_subscription(organization):
+    if not organization:
+        return None
     try:
         subscription = organization.billing_subscription
     except Subscription.DoesNotExist:
@@ -31,17 +37,37 @@ def _effective_module_rows(organization):
         return []
     now = timezone.now()
     plan_rows = {row.module_id: row for row in PlanModule.objects.select_related("module").filter(plan=subscription.plan, plan__is_active=True, included=True, module__is_active=True)}
+    base_modules = Module.objects.filter(code__in=BASE_MODULE_CODES, is_active=True)
+    for module in base_modules:
+        plan_rows.setdefault(module.pk, module)
     overrides = SubscriptionModule.objects.select_related("module").filter(subscription=subscription, module__is_active=True)
     for row in overrides:
         if not row.included or not row.is_active or (row.starts_at and row.starts_at > now) or (row.ends_at and row.ends_at <= now):
             plan_rows.pop(row.module_id, None)
         else:
             plan_rows[row.module_id] = row
+    # A module is usable only when every active dependency is usable too.
+    changed = True
+    while changed:
+        changed = False
+        for module_id in list(plan_rows):
+            required_ids = ModuleDependency.objects.filter(module_id=module_id, is_active=True).values_list("depends_on_id", flat=True)
+            module_code = plan_rows[module_id].module.code if hasattr(plan_rows[module_id], "module") else plan_rows[module_id].code
+            required_code = REQUIRED_MODULE_CODES.get(module_code)
+            if required_code:
+                required_ids = list(required_ids) + list(Module.objects.filter(code=required_code).values_list("pk", flat=True))
+                if not Module.objects.filter(code=required_code, is_active=True).exists():
+                    del plan_rows[module_id]
+                    changed = True
+                    continue
+            if any(required_id not in plan_rows for required_id in required_ids):
+                del plan_rows[module_id]
+                changed = True
     return list(plan_rows.values())
 
 
 def get_active_modules(organization):
-    module_ids = [row.module_id for row in _effective_module_rows(organization)]
+    module_ids = [getattr(row, "module_id", row.pk) for row in _effective_module_rows(organization)]
     return Module.objects.filter(pk__in=module_ids, is_active=True)
 
 
@@ -63,7 +89,7 @@ def get_module_limits(organization, code):
     if isinstance(row, SubscriptionModule):
         plan_limits = PlanModule.objects.filter(plan=_get_subscription(organization).plan, module=module).values_list("limits", flat=True).first() or {}
         return {**plan_limits, **(row.limits or {})}
-    return row.limits or {}
+    return getattr(row, "limits", None) or {}
 
 
 def get_module_limit(organization, code, key, default=None):
@@ -85,6 +111,13 @@ def add_subscription_module(subscription, module, *, actor, starts_at=None, ends
     module = Module.objects.get(pk=module.pk)
     if not module.is_active:
         raise ValidationError("Não é possível adicionar um módulo inativo.")
+    available_ids = {getattr(row, "module_id", row.pk) for row in _effective_module_rows(subscription.organization)}
+    missing = ModuleDependency.objects.filter(module=module, is_active=True).exclude(depends_on_id__in=available_ids)
+    required_code = REQUIRED_MODULE_CODES.get(module.code)
+    if required_code and not has_module(subscription.organization, required_code):
+        raise ValidationError("Não é possível adicionar um módulo sem suas dependências ativas.")
+    if missing.exists():
+        raise ValidationError("Não é possível adicionar um módulo sem suas dependências ativas.")
     row, _created = SubscriptionModule.objects.get_or_create(
         subscription=subscription,
         module=module,

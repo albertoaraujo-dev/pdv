@@ -17,6 +17,7 @@ from apps.catalog.models import Category, Product, Unit
 from apps.tenants.models import Organization, Store, UserProfile, UserStoreAccess
 from apps.inventory.models import Stock, StockMovement
 from apps.inventory.services import reserve_stock_for_sale
+from apps.billing.models import Module, Plan, PlanModule, Subscription
 
 from .abacatepay import AbacatePayError
 from .models import CardPaymentTransaction, Sale, SaleItem, SalePayment
@@ -28,6 +29,11 @@ class SalesApiTests(TestCase):
         self.client = APIClient()
         self.first_org = Organization.objects.create(name="Primeira")
         self.second_org = Organization.objects.create(name="Segunda")
+        plan = Plan.objects.create(code="sales-test", name="PDV")
+        catalog, _ = Module.objects.get_or_create(code="catalog", defaults={"name": "Catálogo", "is_base": True})
+        sales, _ = Module.objects.get_or_create(code="sales", defaults={"name": "PDV"})
+        PlanModule.objects.create(plan=plan, module=sales)
+        Subscription.objects.create(organization=self.first_org, plan=plan, status=Subscription.Status.ACTIVE)
         self.first_store = Store.objects.create(organization=self.first_org, name="Matriz", code="M01")
         self.second_store = Store.objects.create(organization=self.second_org, name="Filial", code="F01")
         self.category = Category.objects.create(organization=self.first_org, name="Bebidas")

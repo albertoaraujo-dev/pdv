@@ -13,6 +13,7 @@ class Module(models.Model):
     name = models.CharField("nome", max_length=120)
     description = models.TextField("descrição", blank=True)
     is_active = models.BooleanField("ativo", default=True)
+    is_base = models.BooleanField("módulo base", default=False)
     created_at = models.DateTimeField("criado em", auto_now_add=True)
     updated_at = models.DateTimeField("atualizado em", auto_now=True)
 
@@ -23,6 +24,40 @@ class Module(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.code})"
+
+
+class ModuleDependency(models.Model):
+    module = models.ForeignKey(Module, on_delete=models.PROTECT, related_name="dependencies", verbose_name="módulo")
+    depends_on = models.ForeignKey(Module, on_delete=models.PROTECT, related_name="required_by", verbose_name="depende de")
+    is_active = models.BooleanField("ativo", default=True)
+    created_at = models.DateTimeField("criado em", auto_now_add=True)
+
+    class Meta:
+        ordering = ["module__code", "depends_on__code"]
+        constraints = [models.UniqueConstraint(fields=["module", "depends_on"], name="unique_module_dependency")]
+        verbose_name = "dependência de módulo"
+        verbose_name_plural = "dependências de módulos"
+
+    def clean(self):
+        if self.module_id and self.module_id == self.depends_on_id:
+            raise ValidationError("Um módulo não pode depender de si mesmo.")
+        if self.module_id and self.depends_on_id:
+            dependencies = {self.depends_on_id}
+            pending = [self.depends_on_id]
+            while pending:
+                current = pending.pop()
+                for dependency_id in ModuleDependency.objects.filter(
+                    module_id=current, is_active=True
+                ).values_list("depends_on_id", flat=True):
+                    if dependency_id == self.module_id:
+                        raise ValidationError("Dependências de módulos não podem formar ciclos.")
+                    if dependency_id not in dependencies:
+                        dependencies.add(dependency_id)
+                        pending.append(dependency_id)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
 
 
 class Plan(models.Model):
@@ -62,6 +97,24 @@ class PlanModule(models.Model):
     def clean(self):
         if self._state.adding and self.plan_id and self.module_id and (not self.plan.is_active or not self.module.is_active):
             raise ValidationError("Um módulo de plano precisa usar plano e módulo ativos.")
+        if self.included and self.module_id:
+            missing = ModuleDependency.objects.filter(module=self.module, is_active=True).exclude(
+                depends_on__is_base=True
+            ).exclude(depends_on__code__in=("core", "catalog")).exclude(
+                depends_on_id__in=PlanModule.objects.filter(
+                    plan_id=self.plan_id, included=True
+                ).values("module_id")
+            )
+            if self.module.code == "sales" and not (
+                self.module.__class__.objects.filter(code="catalog", is_active=True).exists()
+                and (
+                    self.module.__class__.objects.filter(code="catalog", is_base=True).exists()
+                    or PlanModule.objects.filter(plan_id=self.plan_id, module__code="catalog", included=True).exists()
+                )
+            ):
+                raise ValidationError("O módulo sales precisa de um catálogo ativo.")
+            if missing.exists():
+                raise ValidationError("Um módulo incluído no plano precisa incluir suas dependências.")
         if self.limits is not None and not isinstance(self.limits, dict):
             raise ValidationError({"limits": "Os limites precisam ser um objeto JSON."})
 

@@ -11,6 +11,7 @@ from apps.catalog.admin import BooleanRadioFilter, CatalogStatusActionsMixin, Ca
 from apps.catalog.models import Category, Product, Unit
 from apps.tenants.models import Organization, Store, UserProfile, UserStoreAccess
 from apps.inventory.models import Stock
+from apps.billing.models import Module, Plan, PlanModule, Subscription
 
 
 class CatalogModelTests(TestCase):
@@ -187,6 +188,9 @@ class CatalogAdminScopeTests(TestCase):
     def setUp(self):
         self.first_org = Organization.objects.create(name="Primeira")
         self.second_org = Organization.objects.create(name="Segunda")
+        plan = Plan.objects.create(code="catalog-test", name="Catálogo")
+        catalog, _ = Module.objects.get_or_create(code="catalog", defaults={"name": "Catálogo", "is_base": True})
+        Subscription.objects.create(organization=self.first_org, plan=plan, status=Subscription.Status.ACTIVE)
         self.first_category = Category.objects.create(organization=self.first_org, name="Bebidas")
         self.second_category = Category.objects.create(organization=self.second_org, name="Lanches")
         self.first_unit = Unit.objects.create(organization=self.first_org, name="Unidade", symbol="UN")
@@ -630,6 +634,9 @@ class CatalogApiTests(TestCase):
         self.client = APIClient()
         self.first_org = Organization.objects.create(name="Primeira")
         self.second_org = Organization.objects.create(name="Segunda")
+        plan = Plan.objects.create(code="catalog-api-test", name="Catálogo")
+        Module.objects.get_or_create(code="catalog", defaults={"name": "Catálogo", "is_base": True})
+        Subscription.objects.create(organization=self.first_org, plan=plan, status=Subscription.Status.ACTIVE)
         self.first_store = Store.objects.create(organization=self.first_org, name="Matriz", code="M01")
         self.first_category = Category.objects.create(organization=self.first_org, name="Bebidas")
         self.second_category = Category.objects.create(organization=self.second_org, name="Lanches")

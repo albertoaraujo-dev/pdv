@@ -1,9 +1,11 @@
+from django.core.exceptions import PermissionDenied
 from django.db.models import Prefetch, Q
 from rest_framework import permissions, viewsets
 
 from apps.accounts.policies import can_access_admin, can_access_pos, get_allowed_stores, get_user_organization, is_inactive_for_login
 from apps.inventory.models import Stock
 from apps.tenants.models import Store
+from apps.billing.services import require_module
 
 from .models import Category, Product, Unit
 from .serializers import CategorySerializer, ProductSerializer, UnitSerializer
@@ -12,12 +14,21 @@ from .serializers import CategorySerializer, ProductSerializer, UnitSerializer
 class CanReadCatalog(permissions.BasePermission):
     def has_permission(self, request, view):
         user = request.user
-        return bool(
+        if not bool(
             user
             and user.is_authenticated
             and not is_inactive_for_login(user)
             and (can_access_admin(user) or can_access_pos(user))
-        )
+        ):
+            return False
+        if user.is_superuser:
+            return True
+        organization = get_user_organization(user)
+        try:
+            require_module(organization, "catalog")
+        except PermissionDenied:
+            return False
+        return True
 
 
 class TenantCatalogViewSet(viewsets.ReadOnlyModelViewSet):

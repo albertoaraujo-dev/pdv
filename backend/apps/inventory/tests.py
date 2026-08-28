@@ -7,6 +7,7 @@ from unfold.widgets import UnfoldAdminDecimalFieldWidget, UnfoldAdminSelectWidge
 
 from apps.catalog.models import Category, Product, Unit
 from apps.tenants.models import Organization, Store, UserProfile, UserStoreAccess
+from apps.billing.models import Module, Plan, PlanModule, Subscription
 
 from .admin import StockAdmin, StockInboundForm, StockMovementAdmin
 from .models import Stock, StockMovement
@@ -18,6 +19,10 @@ class InventoryAdminTests(TestCase):
         self.factory = RequestFactory()
         self.first_org = Organization.objects.create(name="Primeira")
         self.second_org = Organization.objects.create(name="Segunda")
+        plan = Plan.objects.create(code="inventory-test", name="Estoque")
+        inventory = Module.objects.create(code="inventory", name="Estoque")
+        PlanModule.objects.create(plan=plan, module=inventory)
+        Subscription.objects.create(organization=self.first_org, plan=plan, status=Subscription.Status.ACTIVE)
         self.first_store = Store.objects.create(organization=self.first_org, name="Matriz", code="M01")
         self.second_store = Store.objects.create(organization=self.second_org, name="Filial", code="F01")
         first_category = Category.objects.create(organization=self.first_org, name="Bebidas")
