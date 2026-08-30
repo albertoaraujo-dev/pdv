@@ -80,6 +80,8 @@ docker compose restart frontend
 - A disponibilidade é decidida no backend: somente assinaturas `trial` não expiradas ou `active` liberam módulos; `past_due`, `suspended` e `cancelled` não liberam.
 - Novas organizações criadas pelo Admin global recebem uma assinatura trial idempotente do plano padrão ativo (`mvp` na instalação inicial), sem gateway ou cobrança; o plano inclui `sales`, enquanto `core` e `catalog` são base obrigatória.
 - Organizações legadas podem ser regularizadas sem cobrança com `python manage.py provision_subscriptions`; o comando também pode receber `--organization ID` e nunca altera assinaturas existentes.
+- O ciclo de cobrança é `trial`, `active`, `past_due`, `suspended` e `cancelled`; faturas vencidas entram em carência configurável (`BILLING_GRACE_PERIOD_DAYS`, padrão 7) e a rotina idempotente `python manage.py billing_suspension_routine` suspende após a carência (`--dry-run` disponível).
+- Cancelamento e mudanças de plano são serviços restritos ao administrador global. Cada mudança é registrada em `SubscriptionChange`; faturas e módulos históricos nunca são apagados, e um pagamento reativa assinaturas não canceladas.
 
 ## Observações
 

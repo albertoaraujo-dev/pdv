@@ -4,14 +4,14 @@ from decimal import Decimal
 from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.test import RequestFactory, TestCase
+from django.test import RequestFactory, TestCase, override_settings
 from django.utils import timezone
 
 from apps.tenants.models import Organization, UserProfile
 
 from .admin import ModuleAdmin, PlanAdmin, PlanModuleAdmin, SubscriptionAdmin, SubscriptionModuleAdmin, SubscriptionInvoiceAdmin
-from .models import BillingPayment, BillingProviderEvent, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionInvoice, SubscriptionModule
-from .services import add_subscription_module, get_module_limit, get_module_limits, get_active_modules, has_module, provision_organization_subscription, record_manual_invoice_payment, record_provider_event, require_module
+from .models import BillingPayment, BillingProviderEvent, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionChange, SubscriptionInvoice, SubscriptionModule
+from .services import add_subscription_module, cancel_subscription, change_subscription_plan, get_module_limit, get_module_limits, get_active_modules, has_module, mark_subscription_past_due, provision_organization_subscription, record_manual_invoice_payment, record_provider_event, require_module, suspend_expired_subscriptions
 
 
 class BillingTests(TestCase):
@@ -268,3 +268,77 @@ class BillingTests(TestCase):
 
         self.assertTrue(has_module(self.first_org, "sales"))
         self.assertFalse(has_module(self.second_org, "sales"))
+
+    @override_settings(BILLING_GRACE_PERIOD_DAYS=7)
+    def test_overdue_transition_is_idempotent_and_suspends_after_grace(self):
+        now = timezone.now()
+        self.invoice.due_date = (now - timedelta(days=1)).date()
+        self.invoice.save(update_fields=["due_date", "updated_at"])
+
+        first = mark_subscription_past_due(self.first_subscription, now=now)
+        second = mark_subscription_past_due(self.first_subscription, now=now + timedelta(days=1))
+        self.assertEqual(first.status, Subscription.Status.PAST_DUE)
+        self.assertEqual(second.grace_until, now + timedelta(days=7))
+        self.assertEqual(SubscriptionInvoice.objects.get(pk=self.invoice.pk).status, SubscriptionInvoice.Status.PAST_DUE)
+        self.assertEqual(suspend_expired_subscriptions(now=now + timedelta(days=7)), 1)
+        self.assertEqual(suspend_expired_subscriptions(now=now + timedelta(days=7)), 0)
+        self.first_subscription.refresh_from_db()
+        self.assertEqual(self.first_subscription.status, Subscription.Status.SUSPENDED)
+
+    def test_cancellation_preserves_invoice_and_module_history(self):
+        row = SubscriptionModule.objects.create(organization=self.first_org, subscription=self.first_subscription, module=self.core, is_active=False)
+        cancel_subscription(self.first_subscription, actor=self.global_admin, reason="encerramento", metadata={"source": "test"})
+        self.first_subscription.refresh_from_db()
+        self.assertEqual(self.first_subscription.status, Subscription.Status.CANCELLED)
+        self.assertEqual(self.first_subscription.cancellation_reason, "encerramento")
+        self.assertTrue(SubscriptionInvoice.objects.filter(pk=self.invoice.pk).exists())
+        self.assertTrue(SubscriptionModule.objects.filter(pk=row.pk).exists())
+
+    def test_downgrade_preserves_records_and_removes_only_effective_module(self):
+        premium = Plan.objects.create(code="premium", name="Premium")
+        PlanModule.objects.create(plan=premium, module=self.reports)
+        self.first_subscription.plan = premium
+        self.first_subscription.status = Subscription.Status.ACTIVE
+        self.first_subscription.save(update_fields=["plan", "status", "updated_at"])
+        change_subscription_plan(self.first_subscription, self.plan, actor=self.global_admin, reason="downgrade")
+        self.assertEqual(SubscriptionChange.objects.count(), 1)
+        self.assertTrue(PlanModule.objects.filter(plan=premium, module=self.reports).exists())
+        self.assertTrue(SubscriptionInvoice.objects.filter(pk=self.invoice.pk).exists())
+        self.assertFalse(has_module(self.first_org, "reports"))
+
+    def test_upgrade_records_change_and_exposes_new_module(self):
+        PlanModule.objects.create(plan=self.plan, module=self.reports)
+        premium = Plan.objects.create(code="premium", name="Premium")
+        PlanModule.objects.create(plan=premium, module=self.reports)
+        change_subscription_plan(self.first_subscription, premium, actor=self.global_admin, reason="upgrade")
+        self.assertEqual(self.first_subscription.__class__.objects.get(pk=self.first_subscription.pk).plan_id, premium.pk)
+        self.assertTrue(has_module(self.first_org, "reports"))
+        self.assertEqual(SubscriptionChange.objects.get().reason, "upgrade")
+
+    def test_payment_reactivates_suspended_but_not_cancelled_subscription(self):
+        self.first_subscription.status = Subscription.Status.SUSPENDED
+        self.first_subscription.past_due_since = timezone.now() - timedelta(days=8)
+        self.first_subscription.grace_until = timezone.now() - timedelta(days=1)
+        self.first_subscription.save(update_fields=["status", "past_due_since", "grace_until", "updated_at"])
+        self.invoice.due_date = (timezone.now() - timedelta(days=1)).date()
+        self.invoice.status = SubscriptionInvoice.Status.PAST_DUE
+        self.invoice.save(update_fields=["due_date", "status", "updated_at"])
+        record_manual_invoice_payment(self.invoice, actor=self.global_admin, idempotency_key="reactivate")
+        self.first_subscription.refresh_from_db()
+        self.assertEqual(self.first_subscription.status, Subscription.Status.ACTIVE)
+        self.assertIsNone(self.first_subscription.grace_until)
+
+        self.first_subscription.status = Subscription.Status.CANCELLED
+        self.first_subscription.save(update_fields=["status", "updated_at"])
+        other = SubscriptionInvoice.objects.create(organization=self.first_org, subscription=self.first_subscription, number="2026-002", amount=Decimal("1.00"), due_date=date(2026, 8, 31))
+        record_manual_invoice_payment(other, actor=self.global_admin, idempotency_key="cancelled-payment")
+        self.first_subscription.refresh_from_db()
+        self.assertEqual(self.first_subscription.status, Subscription.Status.CANCELLED)
+
+    def test_lifecycle_mutations_are_global_only_and_tenant_safe(self):
+        with self.assertRaises(PermissionDenied):
+            cancel_subscription(self.first_subscription, actor=self.manager, reason="forbidden")
+        with self.assertRaises(PermissionDenied):
+            change_subscription_plan(self.first_subscription, self.plan, actor=self.operator)
+        with self.assertRaises(ValidationError):
+            SubscriptionInvoice.objects.create(organization=self.second_org, subscription=self.first_subscription, number="tenant-safe", amount=Decimal("1.00"), due_date=date(2026, 8, 31))

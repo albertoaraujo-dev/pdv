@@ -4,7 +4,7 @@ from unfold.admin import ModelAdmin
 
 from apps.tenants.admin import NoDeleteAdminMixin
 
-from .models import BillingPayment, BillingProviderEvent, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionInvoice, SubscriptionModule
+from .models import BillingPayment, BillingProviderEvent, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionChange, SubscriptionInvoice, SubscriptionModule
 from .services import record_manual_invoice_payment
 
 
@@ -73,7 +73,7 @@ class SubscriptionAdmin(NoDeleteAdminMixin, GlobalBillingAdminMixin, ModelAdmin)
     list_display = ["organization", "plan", "status", "gateway_provider", "current_period_end", "updated_at"]
     list_filter = ["status", "plan", "gateway_provider"]
     search_fields = ["organization__name", "organization__document", "public_id"]
-    readonly_fields = ["public_id", "created_at", "updated_at"]
+    readonly_fields = ["public_id", "created_at", "updated_at", "past_due_since", "grace_until", "cancelled_at"]
     list_select_related = ["organization", "plan"]
 
     @admin.action(description="Suspender assinaturas selecionadas")
@@ -82,6 +82,14 @@ class SubscriptionAdmin(NoDeleteAdminMixin, GlobalBillingAdminMixin, ModelAdmin)
         self.message_user(request, f"{updated} assinatura(s) suspensa(s).", messages.SUCCESS)
 
     actions = ["suspend_subscriptions"]
+
+
+@admin.register(SubscriptionChange)
+class SubscriptionChangeAdmin(NoDeleteAdminMixin, GlobalBillingAdminMixin, ModelAdmin):
+    list_display = ["subscription", "old_plan", "new_plan", "effective_at", "actor", "reason"]
+    list_filter = ["old_plan", "new_plan", "effective_at"]
+    search_fields = ["subscription__organization__name", "reason"]
+    readonly_fields = ["subscription", "old_plan", "new_plan", "effective_at", "actor", "reason", "created_at"]
 
 
 @admin.register(SubscriptionInvoice)

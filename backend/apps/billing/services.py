@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
 from datetime import timedelta
@@ -6,7 +7,7 @@ from django.utils import timezone
 from apps.accounts.policies import get_user_profile
 from apps.tenants.models import Organization
 
-from .models import BillingPayment, BillingProviderEvent, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionInvoice, SubscriptionModule
+from .models import BillingPayment, BillingProviderEvent, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionChange, SubscriptionInvoice, SubscriptionModule
 
 
 BASE_MODULE_CODES = ("core", "catalog")
@@ -46,12 +47,100 @@ def _require_global_admin(actor):
         raise PermissionDenied("Somente o administrador global pode alterar o billing.")
 
 
+@transaction.atomic
+def mark_subscription_past_due(subscription, *, now=None, grace_period_days=None):
+    """Mark overdue invoices and start one stable grace window for a subscription."""
+    now = now or timezone.now()
+    subscription = Subscription.objects.select_for_update().get(pk=subscription.pk)
+    if subscription.status == Subscription.Status.CANCELLED:
+        return subscription
+    overdue = SubscriptionInvoice.objects.select_for_update().filter(
+        subscription=subscription, due_date__lt=now.date(), status=SubscriptionInvoice.Status.OPEN
+    )
+    has_overdue = SubscriptionInvoice.objects.filter(
+        subscription=subscription, due_date__lt=now.date(), status__in=(SubscriptionInvoice.Status.OPEN, SubscriptionInvoice.Status.PAST_DUE)
+    ).exists()
+    changed = overdue.update(status=SubscriptionInvoice.Status.PAST_DUE, updated_at=now)
+    if not has_overdue and subscription.status != Subscription.Status.PAST_DUE:
+        return subscription
+    if subscription.status == Subscription.Status.SUSPENDED:
+        return subscription
+    days = settings.BILLING_GRACE_PERIOD_DAYS if grace_period_days is None else grace_period_days
+    if days < 0:
+        raise ValidationError("O período de carência não pode ser negativo.")
+    fields = []
+    if subscription.status != Subscription.Status.PAST_DUE:
+        subscription.status = Subscription.Status.PAST_DUE
+        fields.append("status")
+    if not subscription.past_due_since:
+        subscription.past_due_since = now
+        fields.append("past_due_since")
+    if not subscription.grace_until:
+        subscription.grace_until = now + timedelta(days=days)
+        fields.append("grace_until")
+    if fields:
+        fields.append("updated_at")
+        subscription.save(update_fields=fields)
+    return subscription
+
+
+@transaction.atomic
+def suspend_expired_subscriptions(*, now=None, grace_period_days=None):
+    now = now or timezone.now()
+    count = 0
+    for subscription in Subscription.objects.select_for_update().filter(
+        status=Subscription.Status.PAST_DUE, grace_until__isnull=False, grace_until__lte=now
+    ):
+        subscription.status = Subscription.Status.SUSPENDED
+        subscription.save(update_fields=["status", "updated_at"])
+        count += 1
+    return count
+
+
+@transaction.atomic
+def cancel_subscription(subscription, *, actor, reason="", metadata=None, cancelled_at=None):
+    _require_global_admin(actor)
+    subscription = Subscription.objects.select_for_update().get(pk=subscription.pk)
+    if subscription.status == Subscription.Status.CANCELLED:
+        return subscription
+    subscription.status = Subscription.Status.CANCELLED
+    subscription.cancelled_at = cancelled_at or timezone.now()
+    subscription.cancellation_reason = reason or ""
+    subscription.cancellation_metadata = metadata or {}
+    subscription.save(update_fields=["status", "cancelled_at", "cancellation_reason", "cancellation_metadata", "updated_at"])
+    return subscription
+
+
+@transaction.atomic
+def change_subscription_plan(subscription, new_plan, *, actor, reason="", effective_at=None):
+    _require_global_admin(actor)
+    subscription = Subscription.objects.select_for_update().get(pk=subscription.pk)
+    new_plan = Plan.objects.get(pk=new_plan.pk)
+    if not new_plan.is_active:
+        raise ValidationError("Não é possível alterar para um plano inativo.")
+    if subscription.status == Subscription.Status.CANCELLED:
+        raise ValidationError("Uma assinatura cancelada não pode mudar de plano.")
+    if subscription.plan_id == new_plan.pk:
+        return subscription
+    old_plan = subscription.plan
+    SubscriptionChange.objects.create(
+        subscription=subscription, old_plan=old_plan, new_plan=new_plan,
+        effective_at=effective_at or timezone.now(), actor=actor, reason=reason or "",
+    )
+    subscription.plan = new_plan
+    subscription.save(update_fields=["plan", "updated_at"])
+    return subscription
+
+
+def downgrade_subscription(subscription, new_plan, *, actor, reason="", effective_at=None):
+    return change_subscription_plan(subscription, new_plan, actor=actor, reason=reason, effective_at=effective_at)
+
+
 def _get_subscription(organization):
     if not organization:
         return None
-    try:
-        subscription = organization.billing_subscription
-    except Subscription.DoesNotExist:
+    subscription = Subscription.objects.select_related("plan").filter(organization_id=organization.pk).first()
+    if not subscription:
         return None
     now = timezone.now()
     if not organization.is_active or subscription.status not in (Subscription.Status.ACTIVE, Subscription.Status.TRIAL):
@@ -199,7 +288,9 @@ def record_manual_invoice_payment(invoice, *, actor, idempotency_key, amount=Non
     if subscription.status != Subscription.Status.CANCELLED:
         subscription.status = Subscription.Status.ACTIVE
         subscription.started_at = subscription.started_at or payment.paid_at
-        subscription.save(update_fields=["status", "started_at", "updated_at"])
+        subscription.past_due_since = None
+        subscription.grace_until = None
+        subscription.save(update_fields=["status", "started_at", "past_due_since", "grace_until", "updated_at"])
     return payment
 
 

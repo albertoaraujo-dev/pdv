@@ -146,9 +146,13 @@ class Subscription(models.Model):
     gateway_provider = models.CharField("provedor de gateway", max_length=64, blank=True)
     started_at = models.DateTimeField("iniciada em", null=True, blank=True)
     trial_ends_at = models.DateTimeField("trial termina em", null=True, blank=True)
+    past_due_since = models.DateTimeField("inadimplência desde", null=True, blank=True)
+    grace_until = models.DateTimeField("fim da carência", null=True, blank=True)
     current_period_start = models.DateField("início do período", null=True, blank=True)
     current_period_end = models.DateField("fim do período", null=True, blank=True)
     cancelled_at = models.DateTimeField("cancelada em", null=True, blank=True)
+    cancellation_reason = models.CharField("motivo do cancelamento", max_length=255, blank=True)
+    cancellation_metadata = models.JSONField("metadados do cancelamento", default=dict, blank=True)
     created_at = models.DateTimeField("criada em", auto_now_add=True)
     updated_at = models.DateTimeField("atualizada em", auto_now=True)
 
@@ -224,6 +228,7 @@ class SubscriptionModule(models.Model):
 class SubscriptionInvoice(models.Model):
     class Status(models.TextChoices):
         OPEN = "open", "Aberta"
+        PAST_DUE = "past_due", "Inadimplente"
         PAID = "paid", "Paga"
         VOID = "void", "Cancelada"
 
@@ -255,6 +260,29 @@ class SubscriptionInvoice(models.Model):
 
     def __str__(self):
         return self.number
+
+
+class SubscriptionChange(models.Model):
+    subscription = models.ForeignKey(Subscription, on_delete=models.PROTECT, related_name="plan_changes", verbose_name="assinatura")
+    old_plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name="subscription_changes_from", verbose_name="plano anterior")
+    new_plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name="subscription_changes_to", verbose_name="novo plano")
+    effective_at = models.DateTimeField("vigente em")
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="billing_subscription_changes")
+    reason = models.TextField("motivo", blank=True)
+    created_at = models.DateTimeField("criada em", auto_now_add=True)
+
+    class Meta:
+        ordering = ["-effective_at", "-created_at"]
+        verbose_name = "alteração de assinatura"
+        verbose_name_plural = "alterações de assinaturas"
+
+    def clean(self):
+        if self.old_plan_id == self.new_plan_id:
+            raise ValidationError("O novo plano precisa ser diferente do plano anterior.")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
 
 
 class BillingPayment(models.Model):
