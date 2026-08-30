@@ -82,6 +82,7 @@ docker compose restart frontend
 - Organizações legadas podem ser regularizadas sem cobrança com `python manage.py provision_subscriptions`; o comando também pode receber `--organization ID` e nunca altera assinaturas existentes.
 - O ciclo de cobrança é `trial`, `active`, `past_due`, `suspended` e `cancelled`; faturas vencidas entram em carência configurável (`BILLING_GRACE_PERIOD_DAYS`, padrão 7) e a rotina idempotente `python manage.py billing_suspension_routine` suspende após a carência (`--dry-run` disponível).
 - Cancelamento e mudanças de plano são serviços restritos ao administrador global. Cada mudança é registrada em `SubscriptionChange`; faturas e módulos históricos nunca são apagados, e um pagamento reativa assinaturas não canceladas.
+- A geração mensal idempotente cria faturas abertas por período, sem gateway ou cobrança automática: `python manage.py generate_subscription_invoices --period 2026-09`; aceita `--organization ID` e `--dry-run`. Uma fatura por assinatura e período é garantida no banco, e o preço do plano vigente é congelado na fatura.
 
 ## Observações
 

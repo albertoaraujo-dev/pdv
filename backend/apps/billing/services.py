@@ -1,7 +1,8 @@
 from django.conf import settings
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
-from datetime import timedelta
+import calendar
+from datetime import date, datetime, timedelta
 from django.utils import timezone
 
 from apps.accounts.policies import get_user_profile
@@ -12,6 +13,85 @@ from .models import BillingPayment, BillingProviderEvent, Module, ModuleDependen
 
 BASE_MODULE_CODES = ("core", "catalog")
 REQUIRED_MODULE_CODES = {"sales": "catalog"}
+
+
+def _monthly_period(period=None):
+    if period is None:
+        period = timezone.localdate()
+    if isinstance(period, str):
+        try:
+            period = datetime.strptime(period, "%Y-%m").date()
+        except ValueError as exc:
+            raise ValidationError("O período precisa estar no formato AAAA-MM.") from exc
+    if not isinstance(period, date):
+        raise ValidationError("O período precisa ser uma data ou estar no formato AAAA-MM.")
+    start = period.replace(day=1)
+    end = start.replace(day=calendar.monthrange(start.year, start.month)[1])
+    return start, end
+
+
+@transaction.atomic
+def generate_subscription_invoice(subscription, period=None, *, period_end=None, due_date=None):
+    """Create one open invoice for a subscription period, without charging it."""
+    start, calculated_end = _monthly_period(period)
+    end = calculated_end if period_end is None else period_end
+    if end < start:
+        raise ValidationError("O fim do período precisa ser igual ou posterior ao início.")
+    subscription = Subscription.objects.select_for_update().select_related("organization", "plan").get(pk=subscription.pk)
+    if not subscription.organization.is_active or subscription.status not in (Subscription.Status.ACTIVE, Subscription.Status.TRIAL):
+        return None
+    if subscription.status == Subscription.Status.TRIAL and subscription.trial_ends_at and subscription.trial_ends_at.date() < start:
+        return None
+    existing = SubscriptionInvoice.objects.filter(
+        subscription=subscription, period_start=start, period_end=end
+    ).first()
+    if existing:
+        return existing
+    invoice_data = {
+        "organization": subscription.organization,
+        "subscription": subscription,
+        "amount": subscription.plan.monthly_price,
+        "status": SubscriptionInvoice.Status.OPEN,
+        "period_start": start,
+        "period_end": end,
+        "due_date": due_date or end,
+    }
+    try:
+        with transaction.atomic():
+            return SubscriptionInvoice.objects.create(number=f"{start:%Y-%m}", **invoice_data)
+    except IntegrityError:
+        existing = SubscriptionInvoice.objects.filter(
+            subscription=subscription, period_start=start, period_end=end
+        ).first()
+        if existing:
+            return existing
+        # Do not overwrite a manually numbered historical invoice.
+        return SubscriptionInvoice.objects.create(number=f"{start:%Y-%m}-{subscription.pk}", **invoice_data)
+
+
+def generate_subscription_invoices(*, period=None, organization=None, dry_run=False):
+    """Generate monthly invoices for eligible subscriptions; never performs payment."""
+    start, end = _monthly_period(period)
+    subscriptions = Subscription.objects.select_related("organization", "plan").filter(
+        status__in=(Subscription.Status.ACTIVE, Subscription.Status.TRIAL),
+        organization__is_active=True,
+    )
+    if organization is not None:
+        subscriptions = subscriptions.filter(organization_id=getattr(organization, "pk", organization))
+    generated = []
+    for subscription in subscriptions.iterator():
+        if subscription.status == Subscription.Status.TRIAL and subscription.trial_ends_at and subscription.trial_ends_at.date() < start:
+            continue
+        if dry_run:
+            if not SubscriptionInvoice.objects.filter(subscription=subscription, period_start=start, period_end=end).exists():
+                generated.append(subscription)
+            continue
+        if SubscriptionInvoice.objects.filter(subscription=subscription, period_start=start, period_end=end).exists():
+            continue
+        invoice = generate_subscription_invoice(subscription, start, period_end=end)
+        if invoice:
+            generated.append(invoice)
+    return generated
 
 
 @transaction.atomic

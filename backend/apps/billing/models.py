@@ -238,6 +238,8 @@ class SubscriptionInvoice(models.Model):
     number = models.CharField("número", max_length=64)
     amount = models.DecimalField("valor", max_digits=12, decimal_places=2)
     status = models.CharField("status", max_length=16, choices=Status.choices, default=Status.OPEN)
+    period_start = models.DateField("início do período", null=True, blank=True)
+    period_end = models.DateField("fim do período", null=True, blank=True)
     due_date = models.DateField("vencimento")
     paid_at = models.DateTimeField("paga em", null=True, blank=True)
     created_at = models.DateTimeField("criada em", auto_now_add=True)
@@ -245,14 +247,27 @@ class SubscriptionInvoice(models.Model):
 
     class Meta:
         ordering = ["-due_date", "-created_at"]
-        constraints = [models.UniqueConstraint(fields=["organization", "number"], name="unique_billing_invoice_number_per_org")]
+        constraints = [
+            models.UniqueConstraint(fields=["organization", "number"], name="unique_billing_invoice_number_per_org"),
+            models.UniqueConstraint(
+                fields=["subscription", "period_start", "period_end"],
+                name="unique_subscription_invoice_period",
+            ),
+        ]
         indexes = [models.Index(fields=["organization", "status", "due_date"])]
         verbose_name = "fatura de assinatura"
         verbose_name_plural = "faturas de assinatura"
 
     def clean(self):
+        errors = {}
         if self.subscription_id and self.organization_id and self.subscription.organization_id != self.organization_id:
-            raise ValidationError({"subscription": "A assinatura precisa pertencer à mesma organização da fatura."})
+            errors["subscription"] = "A assinatura precisa pertencer à mesma organização da fatura."
+        if bool(self.period_start) != bool(self.period_end):
+            errors["period_end"] = "O início e o fim do período devem ser informados juntos."
+        elif self.period_start and self.period_end and self.period_end < self.period_start:
+            errors["period_end"] = "O fim do período precisa ser igual ou posterior ao início."
+        if errors:
+            raise ValidationError(errors)
 
     def save(self, *args, **kwargs):
         self.full_clean()

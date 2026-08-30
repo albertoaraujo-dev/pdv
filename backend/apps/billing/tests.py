@@ -11,7 +11,7 @@ from apps.tenants.models import Organization, UserProfile
 
 from .admin import ModuleAdmin, PlanAdmin, PlanModuleAdmin, SubscriptionAdmin, SubscriptionModuleAdmin, SubscriptionInvoiceAdmin
 from .models import BillingPayment, BillingProviderEvent, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionChange, SubscriptionInvoice, SubscriptionModule
-from .services import add_subscription_module, cancel_subscription, change_subscription_plan, get_module_limit, get_module_limits, get_active_modules, has_module, mark_subscription_past_due, provision_organization_subscription, record_manual_invoice_payment, record_provider_event, require_module, suspend_expired_subscriptions
+from .services import add_subscription_module, cancel_subscription, change_subscription_plan, generate_subscription_invoice, generate_subscription_invoices, get_module_limit, get_module_limits, get_active_modules, has_module, mark_subscription_past_due, provision_organization_subscription, record_manual_invoice_payment, record_provider_event, require_module, suspend_expired_subscriptions
 
 
 class BillingTests(TestCase):
@@ -22,7 +22,7 @@ class BillingTests(TestCase):
         self.first_subscription = Subscription.objects.create(organization=self.first_org, plan=self.plan)
         self.second_subscription = Subscription.objects.create(organization=self.second_org, plan=self.plan)
         self.invoice = SubscriptionInvoice.objects.create(
-            organization=self.first_org, subscription=self.first_subscription, number="2026-001", amount=Decimal("19.90"), due_date=date(2026, 8, 31)
+            organization=self.first_org, subscription=self.first_subscription, number="2026-001", amount=Decimal("19.90"), period_start=date(2026, 8, 1), period_end=date(2026, 8, 31), due_date=date(2026, 8, 31)
         )
         self.global_admin = get_user_model().objects.create_superuser(username="root", password="test-pass")
         self.operator = get_user_model().objects.create_user(username="operator", password="test-pass", is_staff=True)
@@ -95,6 +95,29 @@ class BillingTests(TestCase):
         self.assertEqual(payment.amount, Decimal("19.90"))
         self.assertEqual(self.invoice.status, SubscriptionInvoice.Status.PAID)
         self.assertEqual(self.first_subscription.status, Subscription.Status.ACTIVE)
+
+    def test_invoice_generation_is_idempotent_and_uses_period_and_plan_price(self):
+        first = generate_subscription_invoice(self.first_subscription, "2026-09")
+        second = generate_subscription_invoice(self.first_subscription, "2026-09")
+        self.assertEqual(first.pk, second.pk)
+        self.assertEqual(first.amount, Decimal("19.90"))
+        self.assertEqual((first.period_start, first.period_end), (date(2026, 9, 1), date(2026, 9, 30)))
+        self.assertEqual(SubscriptionInvoice.objects.filter(subscription=self.first_subscription).count(), 2)
+
+    def test_invoice_generation_skips_cancelled_suspended_and_other_tenants(self):
+        self.first_subscription.status = Subscription.Status.CANCELLED
+        self.first_subscription.save(update_fields=["status", "updated_at"])
+        self.second_subscription.status = Subscription.Status.SUSPENDED
+        self.second_subscription.save(update_fields=["status", "updated_at"])
+        self.assertEqual(generate_subscription_invoices(period="2026-09"), [])
+        self.assertFalse(SubscriptionInvoice.objects.filter(period_start=date(2026, 9, 1)).exists())
+
+    def test_batch_invoice_generation_is_idempotent(self):
+        first = generate_subscription_invoices(period="2026-10")
+        second = generate_subscription_invoices(period="2026-10")
+        self.assertEqual(len(first), 2)
+        self.assertEqual(second, [])
+        self.assertEqual(SubscriptionInvoice.objects.filter(period_start=date(2026, 10, 1)).count(), 2)
 
     def test_duplicate_payment_and_event_are_idempotent(self):
         first = record_manual_invoice_payment(self.invoice, actor=self.global_admin, idempotency_key="manual-002")
@@ -330,7 +353,7 @@ class BillingTests(TestCase):
 
         self.first_subscription.status = Subscription.Status.CANCELLED
         self.first_subscription.save(update_fields=["status", "updated_at"])
-        other = SubscriptionInvoice.objects.create(organization=self.first_org, subscription=self.first_subscription, number="2026-002", amount=Decimal("1.00"), due_date=date(2026, 8, 31))
+        other = SubscriptionInvoice.objects.create(organization=self.first_org, subscription=self.first_subscription, number="2026-002", amount=Decimal("1.00"), period_start=date(2026, 9, 1), period_end=date(2026, 9, 30), due_date=date(2026, 8, 31))
         record_manual_invoice_payment(other, actor=self.global_admin, idempotency_key="cancelled-payment")
         self.first_subscription.refresh_from_db()
         self.assertEqual(self.first_subscription.status, Subscription.Status.CANCELLED)

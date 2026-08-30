@@ -94,7 +94,7 @@ class SubscriptionChangeAdmin(NoDeleteAdminMixin, GlobalBillingAdminMixin, Model
 
 @admin.register(SubscriptionInvoice)
 class SubscriptionInvoiceAdmin(NoDeleteAdminMixin, GlobalBillingAdminMixin, ModelAdmin):
-    list_display = ["number", "organization", "amount", "status", "due_date", "paid_at"]
+    list_display = ["number", "organization", "amount", "status", "period_start", "period_end", "due_date", "paid_at"]
     list_filter = ["status", "due_date"]
     search_fields = ["number", "organization__name", "organization__document", "public_id"]
     readonly_fields = ["public_id", "created_at", "updated_at", "paid_at"]
