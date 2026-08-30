@@ -8,11 +8,75 @@ from django.utils import timezone
 from apps.accounts.policies import get_user_profile
 from apps.tenants.models import Organization
 
-from .models import BillingPayment, BillingProviderEvent, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionChange, SubscriptionInvoice, SubscriptionModule
+from .models import BillingNotification, BillingPayment, BillingProviderEvent, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionChange, SubscriptionInvoice, SubscriptionModule
 
 
 BASE_MODULE_CODES = ("core", "catalog")
 REQUIRED_MODULE_CODES = {"sales": "catalog"}
+
+
+def _create_billing_notification(notification_type, subscription, *, invoice=None, now=None):
+    period_start = invoice.period_start if invoice else subscription.current_period_start
+    period_end = invoice.period_end if invoice else subscription.current_period_end
+    subject = f"invoice:{invoice.pk}" if invoice else f"subscription:{subscription.pk}:{period_start or 'current'}"
+    key = f"{notification_type}:{subject}"
+    payload = {
+        "type": notification_type,
+        "organization_id": subscription.organization_id,
+        "subscription_id": subscription.pk,
+        "invoice_id": invoice.pk if invoice else None,
+        "invoice_number": invoice.number if invoice else None,
+        "amount": str(invoice.amount) if invoice else None,
+        "due_date": invoice.due_date.isoformat() if invoice else None,
+        "period_start": period_start.isoformat() if period_start else None,
+        "period_end": period_end.isoformat() if period_end else None,
+        "grace_until": subscription.grace_until.isoformat() if subscription.grace_until else None,
+    }
+    try:
+        notification, _created = BillingNotification.objects.get_or_create(
+            idempotency_key=key,
+            defaults={
+                "organization_id": subscription.organization_id,
+                "subscription": subscription,
+                "invoice": invoice,
+                "notification_type": notification_type,
+                "period_start": period_start,
+                "period_end": period_end,
+                "payload": payload,
+            },
+        )
+    except IntegrityError:
+        notification = BillingNotification.objects.get(idempotency_key=key)
+    return notification
+
+
+def generate_billing_notifications(*, now=None, period=None, dry_run=False):
+    """Record proactive billing notices; delivery is intentionally out of scope."""
+    now = now or timezone.now()
+    start, end = _monthly_period(period) if period else (None, None)
+    due_days = settings.BILLING_DUE_SOON_DAYS
+    warning_days = settings.BILLING_SUSPENSION_WARNING_DAYS
+    due_invoices = SubscriptionInvoice.objects.select_related("subscription").filter(
+        organization__is_active=True,
+        subscription__status__in=(Subscription.Status.ACTIVE, Subscription.Status.TRIAL),
+        status=SubscriptionInvoice.Status.OPEN,
+        due_date__gte=now.date(), due_date__lte=now.date() + timedelta(days=due_days),
+    )
+    warning_subscriptions = Subscription.objects.filter(
+        organization__is_active=True, status=Subscription.Status.PAST_DUE,
+        grace_until__gt=now, grace_until__lte=now + timedelta(days=warning_days),
+    )
+    candidates = [(BillingNotification.NotificationType.DUE_SOON, invoice.subscription, invoice) for invoice in due_invoices]
+    for subscription in warning_subscriptions:
+        invoices = SubscriptionInvoice.objects.filter(
+            subscription=subscription, status=SubscriptionInvoice.Status.PAST_DUE,
+        )
+        candidates.extend((BillingNotification.NotificationType.SUSPENSION_WARNING, subscription, invoice) for invoice in invoices)
+    if start:
+        candidates = [candidate for candidate in candidates if candidate[2] is None or (candidate[2].period_start == start and candidate[2].period_end == end)]
+    if dry_run:
+        return candidates
+    return [_create_billing_notification(notification_type, subscription, invoice=invoice, now=now) for notification_type, subscription, invoice in candidates]
 
 
 def _monthly_period(period=None):
@@ -161,6 +225,10 @@ def mark_subscription_past_due(subscription, *, now=None, grace_period_days=None
     if fields:
         fields.append("updated_at")
         subscription.save(update_fields=fields)
+    if subscription.status == Subscription.Status.PAST_DUE:
+        for invoice in SubscriptionInvoice.objects.filter(subscription=subscription, status=SubscriptionInvoice.Status.PAST_DUE):
+            _create_billing_notification(BillingNotification.NotificationType.PAST_DUE, subscription, invoice=invoice, now=now)
+        generate_billing_notifications(now=now)
     return subscription
 
 
@@ -173,6 +241,8 @@ def suspend_expired_subscriptions(*, now=None, grace_period_days=None):
     ):
         subscription.status = Subscription.Status.SUSPENDED
         subscription.save(update_fields=["status", "updated_at"])
+        for invoice in SubscriptionInvoice.objects.filter(subscription=subscription, status=SubscriptionInvoice.Status.PAST_DUE):
+            _create_billing_notification(BillingNotification.NotificationType.SUSPENDED, subscription, invoice=invoice, now=now)
         count += 1
     return count
 

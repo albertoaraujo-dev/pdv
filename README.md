@@ -128,6 +128,8 @@ administrador global registra pagamentos manuais pela ação da fatura no Django
 isso marca a fatura como paga e a assinatura como ativa. Organizações podem operar sem
 gateway configurado. Operadores e administradores de uma organização não podem alterar
 billing. Dados históricos permanecem preservados quando uma assinatura é suspensa.
+Avisos de vencimento, inadimplência e suspensão são registrados de forma idempotente em `BillingNotification`; a entrega permanece abstrata, sem gateway ou provedor de e-mail nesta etapa. Configure `BILLING_DUE_SOON_DAYS` e `BILLING_SUSPENSION_WARNING_DAYS` para os prazos dos avisos.
+Use `python manage.py generate_billing_notifications --dry-run` para simular a rotina.
 
 Módulos são administrados no Django Admin, sempre restrito ao superusuário global. Gerentes podem adicionar ou remover add-ons somente pelo serviço backend, com validação de organização, período e limites; o frontend não é uma camada de autorização.
 

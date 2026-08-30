@@ -9,9 +9,9 @@ from django.utils import timezone
 
 from apps.tenants.models import Organization, UserProfile
 
-from .admin import ModuleAdmin, PlanAdmin, PlanModuleAdmin, SubscriptionAdmin, SubscriptionModuleAdmin, SubscriptionInvoiceAdmin
-from .models import BillingPayment, BillingProviderEvent, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionChange, SubscriptionInvoice, SubscriptionModule
-from .services import add_subscription_module, cancel_subscription, change_subscription_plan, generate_subscription_invoice, generate_subscription_invoices, get_module_limit, get_module_limits, get_active_modules, has_module, mark_subscription_past_due, provision_organization_subscription, record_manual_invoice_payment, record_provider_event, require_module, suspend_expired_subscriptions
+from .admin import BillingNotificationAdmin, ModuleAdmin, PlanAdmin, PlanModuleAdmin, SubscriptionAdmin, SubscriptionModuleAdmin, SubscriptionInvoiceAdmin
+from .models import BillingNotification, BillingPayment, BillingProviderEvent, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionChange, SubscriptionInvoice, SubscriptionModule
+from .services import add_subscription_module, cancel_subscription, change_subscription_plan, generate_billing_notifications, generate_subscription_invoice, generate_subscription_invoices, get_module_limit, get_module_limits, get_active_modules, has_module, mark_subscription_past_due, provision_organization_subscription, record_manual_invoice_payment, record_provider_event, require_module, suspend_expired_subscriptions
 
 
 class BillingTests(TestCase):
@@ -307,6 +307,37 @@ class BillingTests(TestCase):
         self.assertEqual(suspend_expired_subscriptions(now=now + timedelta(days=7)), 0)
         self.first_subscription.refresh_from_db()
         self.assertEqual(self.first_subscription.status, Subscription.Status.SUSPENDED)
+        self.assertEqual(BillingNotification.objects.filter(invoice=self.invoice, notification_type=BillingNotification.NotificationType.PAST_DUE).count(), 1)
+        self.assertEqual(BillingNotification.objects.filter(invoice=self.invoice, notification_type=BillingNotification.NotificationType.SUSPENDED).count(), 1)
+
+    @override_settings(BILLING_DUE_SOON_DAYS=5, BILLING_SUSPENSION_WARNING_DAYS=2)
+    def test_notifications_follow_windows_and_are_idempotent(self):
+        now = timezone.make_aware(timezone.datetime(2026, 8, 20, 12))
+        self.invoice.due_date = date(2026, 8, 25)
+        self.invoice.save(update_fields=["due_date", "updated_at"])
+        self.assertEqual(len(generate_billing_notifications(now=now)), 1)
+        self.assertEqual(len(generate_billing_notifications(now=now)), 1)
+        self.assertEqual(BillingNotification.objects.filter(notification_type=BillingNotification.NotificationType.DUE_SOON).count(), 1)
+        self.first_subscription.status = Subscription.Status.PAST_DUE
+        self.first_subscription.grace_until = now + timedelta(days=2)
+        self.first_subscription.save(update_fields=["status", "grace_until", "updated_at"])
+        self.invoice.status = SubscriptionInvoice.Status.PAST_DUE
+        self.invoice.save(update_fields=["status", "updated_at"])
+        self.assertEqual(len(generate_billing_notifications(now=now)), 1)
+        self.assertEqual(BillingNotification.objects.filter(notification_type=BillingNotification.NotificationType.SUSPENSION_WARNING).count(), 1)
+
+    def test_cancelled_subscription_does_not_create_notifications_and_history_remains(self):
+        self.first_subscription.status = Subscription.Status.CANCELLED
+        self.first_subscription.save(update_fields=["status", "updated_at"])
+        self.assertEqual(generate_billing_notifications(now=timezone.now()), [])
+        self.assertTrue(SubscriptionInvoice.objects.filter(pk=self.invoice.pk).exists())
+
+    def test_notification_admin_is_read_only_and_global_only(self):
+        model_admin = BillingNotificationAdmin(BillingNotification, admin.site)
+        request = self.request_for(self.operator)
+        self.assertFalse(model_admin.has_module_permission(request))
+        self.assertFalse(model_admin.has_add_permission(request))
+        self.assertFalse(model_admin.has_change_permission(request))
 
     def test_cancellation_preserves_invoice_and_module_history(self):
         row = SubscriptionModule.objects.create(organization=self.first_org, subscription=self.first_subscription, module=self.core, is_active=False)

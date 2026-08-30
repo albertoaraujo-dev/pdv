@@ -4,7 +4,7 @@ from unfold.admin import ModelAdmin
 
 from apps.tenants.admin import NoDeleteAdminMixin
 
-from .models import BillingPayment, BillingProviderEvent, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionChange, SubscriptionInvoice, SubscriptionModule
+from .models import BillingNotification, BillingPayment, BillingProviderEvent, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionChange, SubscriptionInvoice, SubscriptionModule
 from .services import record_manual_invoice_payment
 
 
@@ -129,3 +129,18 @@ class BillingProviderEventAdmin(NoDeleteAdminMixin, GlobalBillingAdminMixin, Mod
     search_fields = ["event_id", "provider", "event_type", "organization__name"]
     readonly_fields = ["event_id", "provider", "event_type", "organization", "invoice", "payload", "processed_at", "created_at"]
     list_select_related = ["organization", "invoice"]
+
+
+@admin.register(BillingNotification)
+class BillingNotificationAdmin(NoDeleteAdminMixin, GlobalBillingAdminMixin, ModelAdmin):
+    list_display = ["notification_type", "organization", "subscription", "invoice", "delivered_at", "created_at"]
+    list_filter = ["notification_type", "delivered_at", "created_at"]
+    search_fields = ["organization__name", "invoice__number", "idempotency_key"]
+    readonly_fields = ["organization", "subscription", "invoice", "notification_type", "idempotency_key", "period_start", "period_end", "delivered_at", "payload", "created_at"]
+    list_select_related = ["organization", "subscription", "invoice"]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False

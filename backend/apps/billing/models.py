@@ -277,6 +277,51 @@ class SubscriptionInvoice(models.Model):
         return self.number
 
 
+class BillingNotification(models.Model):
+    class NotificationType(models.TextChoices):
+        DUE_SOON = "due_soon", "Vencimento próximo"
+        PAST_DUE = "past_due", "Fatura vencida"
+        SUSPENSION_WARNING = "suspension_warning", "Aviso de suspensão"
+        SUSPENDED = "suspended", "Assinatura suspensa"
+
+    organization = models.ForeignKey(Organization, on_delete=models.PROTECT, related_name="billing_notifications", verbose_name="organização")
+    subscription = models.ForeignKey(Subscription, on_delete=models.PROTECT, related_name="billing_notifications", verbose_name="assinatura")
+    invoice = models.ForeignKey(SubscriptionInvoice, on_delete=models.PROTECT, null=True, blank=True, related_name="billing_notifications", verbose_name="fatura")
+    notification_type = models.CharField("tipo", max_length=32, choices=NotificationType.choices)
+    idempotency_key = models.CharField("chave de idempotência", max_length=200, unique=True)
+    period_start = models.DateField("início do período", null=True, blank=True)
+    period_end = models.DateField("fim do período", null=True, blank=True)
+    delivered_at = models.DateTimeField("entregue em", null=True, blank=True)
+    payload = models.JSONField("payload", default=dict)
+    created_at = models.DateTimeField("criada em", auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["organization", "notification_type", "created_at"])]
+        verbose_name = "notificação de billing"
+        verbose_name_plural = "notificações de billing"
+
+    def clean(self):
+        errors = {}
+        if self.subscription_id and self.organization_id and self.subscription.organization_id != self.organization_id:
+            errors["subscription"] = "A assinatura precisa pertencer à mesma organização da notificação."
+        if self.invoice_id and self.subscription_id and self.invoice.subscription_id != self.subscription_id:
+            errors["invoice"] = "A fatura precisa pertencer à mesma assinatura da notificação."
+        if self.invoice_id and self.organization_id and self.invoice.organization_id != self.organization_id:
+            errors["invoice"] = "A fatura precisa pertencer à mesma organização da notificação."
+        if bool(self.period_start) != bool(self.period_end):
+            errors["period_end"] = "O início e o fim do período devem ser informados juntos."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.get_notification_type_display()} - {self.organization}"
+
+
 class SubscriptionChange(models.Model):
     subscription = models.ForeignKey(Subscription, on_delete=models.PROTECT, related_name="plan_changes", verbose_name="assinatura")
     old_plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name="subscription_changes_from", verbose_name="plano anterior")
