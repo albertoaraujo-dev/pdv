@@ -354,7 +354,7 @@ def require_module(organization, code):
 def get_module_limits(organization, code):
     module = require_module(organization, code)
     rows = _effective_module_rows(organization)
-    row = next(row for row in rows if row.module_id == module.pk)
+    row = next(row for row in rows if getattr(row, "module_id", row.pk) == module.pk)
     if isinstance(row, SubscriptionModule):
         plan_limits = PlanModule.objects.filter(plan=_get_subscription(organization).plan, module=module).values_list("limits", flat=True).first() or {}
         return {**plan_limits, **(row.limits or {})}

@@ -15,6 +15,7 @@ urlpatterns = [
     path("api/docs/", api_docs),
     path("api/schema/", openapi_schema),
     path("api/auth/", include("apps.accounts.urls")),
+    path("api/billing/", include("apps.billing.urls")),
     path("api/catalog/", include("apps.catalog.urls")),
     path("api/sales/", include("apps.sales.urls")),
     path("api/tenants/", include("apps.tenants.urls")),

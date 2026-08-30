@@ -6,6 +6,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.test import RequestFactory, TestCase, override_settings
 from django.utils import timezone
+from rest_framework.test import APIClient
 
 from apps.tenants.models import Organization, UserProfile
 
@@ -33,6 +34,7 @@ class BillingTests(TestCase):
         self.reports = Module.objects.create(code="reports", name="Relatórios")
         self.addon = Module.objects.create(code="addon", name="Addon")
         self.factory = RequestFactory()
+        self.api_client = APIClient()
 
     def test_provisioning_creates_trial_with_sales_and_base_modules(self):
         organization = Organization.objects.create(name="Nova")
@@ -396,3 +398,65 @@ class BillingTests(TestCase):
             change_subscription_plan(self.first_subscription, self.plan, actor=self.operator)
         with self.assertRaises(ValidationError):
             SubscriptionInvoice.objects.create(organization=self.second_org, subscription=self.first_subscription, number="tenant-safe", amount=Decimal("1.00"), due_date=date(2026, 8, 31))
+
+    def test_billing_status_is_tenant_scoped_and_redacts_provider_payload(self):
+        self.first_subscription.status = Subscription.Status.ACTIVE
+        self.first_subscription.past_due_since = timezone.now() - timedelta(days=1)
+        self.first_subscription.grace_until = timezone.now() + timedelta(days=6)
+        self.first_subscription.current_period_start = date(2026, 8, 1)
+        self.first_subscription.current_period_end = date(2026, 8, 31)
+        self.first_subscription.save()
+        PlanModule.objects.create(plan=self.plan, module=self.core, limits={"users": 5})
+        BillingNotification.objects.create(
+            organization=self.first_org,
+            subscription=self.first_subscription,
+            notification_type=BillingNotification.NotificationType.PAST_DUE,
+            idempotency_key="status-notification",
+            payload={"provider_secret": "must-not-leak"},
+        )
+        self.api_client.force_authenticate(self.operator)
+
+        response = self.api_client.get("/api/billing/status/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            set(response.data),
+            {"organization", "subscription", "effective_modules", "recent_notifications"},
+        )
+        self.assertEqual(response.data["organization"], {"id": self.first_org.pk, "name": "Primeira"})
+        self.assertEqual(response.data["subscription"]["plan"], {"code": "basic", "name": "Básico"})
+        self.assertEqual(response.data["subscription"]["status"], Subscription.Status.ACTIVE)
+        self.assertEqual(response.data["subscription"]["grace_until"][:10], (timezone.localdate() + timedelta(days=6)).isoformat())
+        modules_by_code = {module["code"]: module for module in response.data["effective_modules"]}
+        self.assertEqual(modules_by_code["core"]["limits"], {"users": 5})
+        self.assertNotIn("provider_secret", response.content.decode())
+        self.assertNotIn("payload", response.data["recent_notifications"][0])
+
+        other_user = get_user_model().objects.create_user(username="other", password="test-pass")
+        UserProfile.objects.create(user=other_user, organization=self.second_org, role=UserProfile.Role.ADMIN)
+        self.api_client.force_authenticate(other_user)
+        other_response = self.api_client.get("/api/billing/status/")
+        self.assertEqual(other_response.status_code, 200)
+        self.assertEqual(other_response.data["organization"]["id"], self.second_org.pk)
+        self.assertEqual(other_response.data["recent_notifications"], [])
+
+    def test_billing_status_denies_inactive_tenant_users_and_superusers(self):
+        self.api_client.force_authenticate(self.operator)
+        self.operator.profile.is_active = False
+        self.operator.profile.save(update_fields=["is_active", "updated_at"])
+        self.assertEqual(self.api_client.get("/api/billing/status/").status_code, 403)
+
+        self.api_client.force_authenticate(self.global_admin)
+        self.assertEqual(self.api_client.get("/api/billing/status/").status_code, 403)
+
+    def test_billing_status_shows_suspended_subscription_without_modules_and_is_read_only(self):
+        self.first_subscription.status = Subscription.Status.SUSPENDED
+        self.first_subscription.save(update_fields=["status", "updated_at"])
+        self.api_client.force_authenticate(self.operator)
+
+        response = self.api_client.get("/api/billing/status/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["subscription"]["status"], Subscription.Status.SUSPENDED)
+        self.assertEqual(response.data["effective_modules"], [])
+        self.assertEqual(self.api_client.post("/api/billing/status/").status_code, 405)

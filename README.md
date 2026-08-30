@@ -83,6 +83,7 @@ docker compose restart frontend
 - O ciclo de cobrança é `trial`, `active`, `past_due`, `suspended` e `cancelled`; faturas vencidas entram em carência configurável (`BILLING_GRACE_PERIOD_DAYS`, padrão 7) e a rotina idempotente `python manage.py billing_suspension_routine` suspende após a carência (`--dry-run` disponível).
 - Cancelamento e mudanças de plano são serviços restritos ao administrador global. Cada mudança é registrada em `SubscriptionChange`; faturas e módulos históricos nunca são apagados, e um pagamento reativa assinaturas não canceladas.
 - A geração mensal idempotente cria faturas abertas por período, sem gateway ou cobrança automática: `python manage.py generate_subscription_invoices --period 2026-09`; aceita `--organization ID` e `--dry-run`. Uma fatura por assinatura e período é garantida no banco, e o preço do plano vigente é congelado na fatura.
+- Usuários autenticados de uma organização podem consultar seu status somente leitura em `/api/billing/status/`, incluindo ciclo da assinatura, plano, módulos efetivos com limites e as dez notificações mais recentes. O endpoint é escopado à organização do usuário e não expõe payloads de provedor; superusuários usam o Admin global para billing.
 
 ## Observações
 
