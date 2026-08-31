@@ -134,6 +134,8 @@ Use `python manage.py generate_billing_notifications --dry-run` para simular a r
 
 Módulos são administrados no Django Admin, sempre restrito ao superusuário global. Gerentes podem adicionar ou remover add-ons somente pelo serviço backend, com validação de organização, período e limites; o frontend não é uma camada de autorização.
 
+As rotinas de billing são executadas diariamente pelo workflow `Billing Routine`. Elas geram faturas e registros de aviso, marcam inadimplência e suspendem assinaturas após a carência. O workflow não cobra automaticamente nem chama gateway; `workflow_dispatch` permite execução manual.
+
 Modelo comercial de módulos:
 
 - `core` é obrigatório e gratuito para toda organização.

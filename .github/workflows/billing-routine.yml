@@ -1,0 +1,55 @@
+name: Billing Routine
+
+on:
+  schedule:
+    - cron: "15 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: billing-routine-production
+  cancel-in-progress: false
+
+jobs:
+  run:
+    name: Run billing routines
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Run over SSH
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY_B64: ${{ secrets.VPS_SSH_KEY_B64 }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VPS_APP_DIR: ${{ secrets.VPS_APP_DIR }}
+        run: |
+          set -eu
+
+          test -n "$VPS_HOST"
+          test -n "$VPS_USER"
+          test -n "$VPS_SSH_KEY_B64"
+          test -n "$VPS_KNOWN_HOSTS"
+          test -n "$VPS_APP_DIR"
+
+          install -m 700 -d "$HOME/.ssh"
+          install -m 600 /dev/null "$HOME/.ssh/vps_billing_key"
+          printf '%s' "$VPS_SSH_KEY_B64" | base64 --decode > "$HOME/.ssh/vps_billing_key"
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+
+          ssh -i "$HOME/.ssh/vps_billing_key" \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            "$VPS_USER@$VPS_HOST" \
+            "VPS_APP_DIR='$VPS_APP_DIR' sh -s" <<'REMOTE_SCRIPT'
+          set -eu
+
+          cd "$VPS_APP_DIR/deploy"
+          compose="docker compose --env-file .env.staging -f docker-compose.staging.yml"
+          $compose exec -T backend python manage.py generate_subscription_invoices
+          $compose exec -T backend python manage.py generate_billing_notifications
+          $compose exec -T backend python manage.py billing_suspension_routine
+          REMOTE_SCRIPT
