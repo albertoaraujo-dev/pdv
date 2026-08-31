@@ -74,6 +74,18 @@ const { data: user, pending: isLoadingUser } = await useFetch<AuthUser>(`${apiBa
   credentials: 'include',
   server: false
 })
+const { pending: isLoadingBilling, error: billingError, moduleAccessState } = useBillingStatus()
+const pdvAccessState = computed(() => {
+  const salesState = moduleAccessState('sales')
+  const catalogState = moduleAccessState('catalog')
+  if (salesState === 'loading' || catalogState === 'loading') return 'loading'
+  if (salesState === 'unavailable' || catalogState === 'unavailable') return 'unavailable'
+  return salesState === 'active' && catalogState === 'active' ? 'active' : 'inactive'
+})
+const isPdvAvailable = computed(() => pdvAccessState.value === 'active')
+const blockedModuleNames = computed(() => ['sales', 'catalog']
+  .filter((code) => moduleAccessState(code) === 'inactive')
+  .map((code) => code === 'sales' ? 'vendas' : 'catálogo'))
 
 const isLoggingOut = ref(false)
 const isClosingSale = ref(false)
@@ -132,7 +144,7 @@ const productUrl = computed(() => {
   return `${apiBase}/api/catalog/products/${query ? `?${query}` : ''}`
 })
 
-const { data: products, pending: isLoadingProducts, refresh: refreshProducts } = await useFetch<PaginatedResponse<Product>>(productUrl, {
+const { data: products, pending: isLoadingProducts, error: productsError, refresh: refreshProducts } = await useFetch<PaginatedResponse<Product>>(productUrl, {
   credentials: 'include',
   server: false,
   immediate: false,
@@ -157,7 +169,7 @@ watch(user, async (value) => {
   if (!selectedStoreId.value && value?.stores.length === 1) {
     selectedStoreId.value = value.stores[0].id
     await nextTick()
-    await refreshProducts()
+    if (isPdvAvailable.value) await refreshProducts()
   }
 }, { immediate: true })
 
@@ -168,10 +180,14 @@ watch(selectedStoreId, async (value, previousValue) => {
     saleSuccess.value = ''
     lastSale.value = null
   }
-  if (value) {
+  if (value && isPdvAvailable.value) {
     await refreshProducts()
   }
 }, { immediate: true })
+
+watch(isPdvAvailable, async (value) => {
+  if (value && selectedStoreId.value) await refreshProducts()
+})
 
 watch(search, (value) => {
   searchMessage.value = ''
@@ -180,7 +196,7 @@ watch(search, (value) => {
   }
   searchTimeout = setTimeout(() => {
     productQuery.value = value.trim()
-    if (selectedStoreId.value) {
+    if (selectedStoreId.value && isPdvAvailable.value) {
       refreshProducts()
     }
   }, 250)
@@ -268,7 +284,7 @@ function addToCart(product: Product) {
 }
 
 async function addSearchResultToCart() {
-  if (isAddingSearchResult.value || cartLocked.value) {
+  if (isAddingSearchResult.value || cartLocked.value || !isPdvAvailable.value) {
     return
   }
   const value = search.value.trim()
@@ -453,7 +469,7 @@ async function copyPixPayload() {
 }
 
 async function closeSale() {
-  if (isClosingSale.value) {
+  if (isClosingSale.value || !isPdvAvailable.value) {
     return
   }
 
@@ -638,7 +654,24 @@ function money(value: number | string) {
 
     <BillingStatusCard />
 
-    <div class="pos-workspace">
+    <section v-if="isLoadingBilling || pdvAccessState === 'loading'" class="module-state module-state-loading">
+      <h2>Verificando módulos do plano</h2>
+      <p>Estamos carregando as permissões da sua organização.</p>
+    </section>
+
+    <section v-else-if="pdvAccessState === 'unavailable'" class="module-state module-state-warning">
+      <h2>Não foi possível verificar o acesso ao PDV</h2>
+      <p v-if="billingError?.statusCode === 403">Seu usuário não pode consultar o plano desta organização.</p>
+      <p v-else>O status do plano está temporariamente indisponível. Tente atualizar a página ou fale com um administrador.</p>
+    </section>
+
+    <section v-else-if="pdvAccessState === 'inactive'" class="module-state module-state-warning">
+      <h2>PDV não incluído no plano</h2>
+      <p>Ative os módulos de {{ blockedModuleNames.join(' e ') }} para liberar esta área.</p>
+      <small>O acesso é validado pelo servidor. Esta mensagem apenas explica por que a área está bloqueada.</small>
+    </section>
+
+    <div v-else class="pos-workspace">
       <section class="products-card">
         <div class="products-heading">
           <div>
@@ -658,6 +691,7 @@ function money(value: number | string) {
         <p v-if="searchMessage" class="muted">{{ searchMessage }}</p>
 
         <p v-if="!isClient || isLoadingUser || isLoadingProducts" class="muted">Carregando produtos...</p>
+        <p v-else-if="productsError" class="sale-message sale-message-error">Não foi possível carregar o catálogo. Tente atualizar novamente.</p>
         <p v-else-if="!products?.results.length" class="muted">Nenhum produto encontrado.</p>
 
         <ul v-else class="product-list">
@@ -814,6 +848,41 @@ function money(value: number | string) {
   background: #f8fafc;
   color: #0f172a;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+.module-state {
+  max-width: 820px;
+  margin: 24px 0;
+  padding: 24px;
+  border: 1px solid #dbeafe;
+  border-radius: 20px;
+  background: #ffffff;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06);
+}
+
+.module-state h2 {
+  margin: 0 0 8px;
+  font-size: 1.25rem;
+}
+
+.module-state p,
+.module-state small {
+  margin: 0;
+  color: #64748b;
+}
+
+.module-state-warning {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.module-state-warning h2 {
+  color: #92400e;
+}
+
+.module-state small {
+  display: block;
+  margin-top: 12px;
 }
 
 .pix-payment-box {
