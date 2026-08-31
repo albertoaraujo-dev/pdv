@@ -636,6 +636,8 @@ function money(value: number | string) {
       </label>
     </section>
 
+    <BillingStatusCard />
+
     <div class="pos-workspace">
       <section class="products-card">
         <div class="products-heading">
