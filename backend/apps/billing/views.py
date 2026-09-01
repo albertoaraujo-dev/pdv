@@ -1,11 +1,11 @@
-from rest_framework import permissions
+from rest_framework import generics, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.policies import get_user_organization, is_inactive_for_login
 
-from .models import BillingNotification, Subscription
-from .serializers import BillingStatusSerializer
+from .models import BillingNotification, Subscription, SubscriptionInvoice
+from .serializers import BillingInvoiceSerializer, BillingStatusSerializer
 from .services import get_active_modules, get_module_limits
 
 
@@ -51,3 +51,17 @@ class BillingStatusView(APIView):
             "recent_notifications": notifications,
         }
         return Response(BillingStatusSerializer(data).data)
+
+
+class BillingInvoiceListView(generics.ListAPIView):
+    permission_classes = [CanReadBillingStatus]
+    serializer_class = BillingInvoiceSerializer
+    http_method_names = ["get", "head", "options"]
+
+    def get_queryset(self):
+        organization = get_user_organization(self.request.user)
+        if not organization:
+            return SubscriptionInvoice.objects.none()
+        return SubscriptionInvoice.objects.select_related("subscription__plan").filter(
+            organization_id=organization.pk
+        )

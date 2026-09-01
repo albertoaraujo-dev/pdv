@@ -622,6 +622,7 @@ function money(value: number | string) {
         <span>Logado como</span>
         <strong>{{ displayName }}</strong>
         <small>{{ user.username }} · {{ user.profile.role_label }}</small>
+        <NuxtLink class="billing-link" to="/billing">Consultar billing</NuxtLink>
         <button type="button" :class="{ 'button-loading': isLoggingOut }" :disabled="isLoggingOut || isClosingSale" @click="logout">
           {{ isLoggingOut ? 'Saindo...' : 'Sair do PDV' }}
         </button>
@@ -972,6 +973,15 @@ dt {
 
 .user-card strong {
   font-size: 1.15rem;
+}
+
+.billing-link {
+  width: fit-content;
+  margin-top: 6px;
+  color: #0369a1;
+  font-size: 0.85rem;
+  font-weight: 800;
+  text-decoration: none;
 }
 
 button {

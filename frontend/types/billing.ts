@@ -37,3 +37,25 @@ export type BillingNotification = {
   delivered_at: string | null
   created_at: string
 }
+
+export type BillingInvoice = {
+  public_id: string
+  number: string
+  amount: string
+  status: string
+  due_date: string
+  period_start: string | null
+  period_end: string | null
+  paid_at: string | null
+  plan: {
+    code: string
+    name: string
+  }
+}
+
+export type BillingInvoicePage = {
+  count: number
+  next: string | null
+  previous: string | null
+  results: BillingInvoice[]
+}

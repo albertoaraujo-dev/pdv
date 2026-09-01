@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from .models import SubscriptionInvoice
+
 
 class BillingModuleStatusSerializer(serializers.Serializer):
     code = serializers.CharField()
@@ -42,3 +44,27 @@ class BillingStatusSerializer(serializers.Serializer):
     def get_organization(self, obj):
         organization = obj["organization"]
         return {"id": organization.pk, "name": organization.name}
+
+
+class BillingInvoicePlanSerializer(serializers.Serializer):
+    code = serializers.CharField()
+    name = serializers.CharField()
+
+
+class BillingInvoiceSerializer(serializers.ModelSerializer):
+    plan = BillingInvoicePlanSerializer(source="subscription.plan", read_only=True)
+
+    class Meta:
+        model = SubscriptionInvoice
+        fields = (
+            "public_id",
+            "number",
+            "amount",
+            "status",
+            "due_date",
+            "period_start",
+            "period_end",
+            "paid_at",
+            "plan",
+        )
+        read_only_fields = fields

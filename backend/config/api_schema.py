@@ -10,6 +10,7 @@ API_PATHS = {
     "/api/auth/logout/": ["post"],
     "/api/auth/change-password/": ["post"],
     "/api/billing/status/": ["get"],
+    "/api/billing/invoices/": ["get"],
     "/api/catalog/categories/": ["get"],
     "/api/catalog/categories/{id}/": ["get"],
     "/api/catalog/units/": ["get"],

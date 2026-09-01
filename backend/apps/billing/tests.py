@@ -460,3 +460,92 @@ class BillingTests(TestCase):
         self.assertEqual(response.data["subscription"]["status"], Subscription.Status.SUSPENDED)
         self.assertEqual(response.data["effective_modules"], [])
         self.assertEqual(self.api_client.post("/api/billing/status/").status_code, 405)
+
+    def test_invoice_history_is_tenant_scoped_and_exposes_only_public_business_fields(self):
+        historical = SubscriptionInvoice.objects.create(
+            organization=self.first_org,
+            subscription=self.first_subscription,
+            number="2026-000",
+            amount=Decimal("9.90"),
+            status=SubscriptionInvoice.Status.PAID,
+            period_start=date(2026, 7, 1),
+            period_end=date(2026, 7, 31),
+            due_date=date(2026, 7, 31),
+            paid_at=timezone.make_aware(timezone.datetime(2026, 7, 25, 10)),
+        )
+        SubscriptionInvoice.objects.create(
+            organization=self.second_org,
+            subscription=self.second_subscription,
+            number="other-001",
+            amount=Decimal("99.00"),
+            due_date=date(2026, 8, 31),
+        )
+        self.api_client.force_authenticate(self.operator)
+
+        response = self.api_client.get("/api/billing/invoices/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 2)
+        self.assertEqual({row["number"] for row in response.data["results"]}, {self.invoice.number, historical.number})
+        row = next(row for row in response.data["results"] if row["number"] == historical.number)
+        self.assertEqual(row["public_id"], str(historical.public_id))
+        self.assertEqual(row["amount"], "9.90")
+        self.assertEqual(row["status"], SubscriptionInvoice.Status.PAID)
+        self.assertEqual(row["period_start"], "2026-07-01")
+        self.assertEqual(row["period_end"], "2026-07-31")
+        self.assertEqual(row["plan"], {"code": "basic", "name": "Básico"})
+        self.assertNotIn("id", row)
+        self.assertNotIn("organization", row)
+        self.assertNotIn("subscription", row)
+        self.assertNotIn("payload", response.content.decode())
+        self.assertNotIn("other-001", response.content.decode())
+
+    def test_invoice_history_allows_historical_subscription_statuses_but_is_read_only(self):
+        for number, status, month in (
+            ("2026-003", SubscriptionInvoice.Status.PAST_DUE, 9),
+            ("2026-004", SubscriptionInvoice.Status.VOID, 10),
+            ("2026-005", SubscriptionInvoice.Status.PAID, 11),
+        ):
+            SubscriptionInvoice.objects.create(
+                organization=self.first_org,
+                subscription=self.first_subscription,
+                number=number,
+                amount=Decimal("19.90"),
+                status=status,
+                period_start=date(2026, month, 1),
+                period_end=date(2026, month, 28),
+                due_date=date(2026, month, 28),
+            )
+        self.first_subscription.status = Subscription.Status.CANCELLED
+        self.first_subscription.save(update_fields=["status", "updated_at"])
+        self.api_client.force_authenticate(self.manager)
+
+        response = self.api_client.get("/api/billing/invoices/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            {row["status"] for row in response.data["results"]},
+            {SubscriptionInvoice.Status.OPEN, SubscriptionInvoice.Status.PAST_DUE, SubscriptionInvoice.Status.PAID, SubscriptionInvoice.Status.VOID},
+        )
+        self.assertEqual(self.api_client.post("/api/billing/invoices/", {}).status_code, 405)
+
+        self.first_subscription.status = Subscription.Status.SUSPENDED
+        self.first_subscription.save(update_fields=["status", "updated_at"])
+        self.assertEqual(self.api_client.get("/api/billing/invoices/").status_code, 200)
+
+    def test_invoice_history_denies_inactive_users_and_global_admins(self):
+        self.api_client.force_authenticate(self.operator)
+        self.operator.profile.is_active = False
+        self.operator.profile.save(update_fields=["is_active", "updated_at"])
+        self.assertEqual(self.api_client.get("/api/billing/invoices/").status_code, 403)
+
+        self.api_client.force_authenticate(self.global_admin)
+        self.assertEqual(self.api_client.get("/api/billing/invoices/").status_code, 403)
+
+    def test_invoice_history_is_documented(self):
+        schema = self.api_client.get("/api/schema/").json()
+        docs = self.api_client.get("/api/docs/")
+
+        self.assertIn("/api/billing/invoices/", schema["paths"])
+        self.assertEqual(schema["paths"]["/api/billing/invoices/"]["get"]["responses"]["200"]["description"], "Sucesso")
+        self.assertContains(docs, "/api/billing/invoices/")
