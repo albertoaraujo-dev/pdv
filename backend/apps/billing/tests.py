@@ -8,11 +8,11 @@ from django.test import RequestFactory, TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from apps.tenants.models import Organization, UserProfile
+from apps.tenants.models import Organization, Store, UserProfile
 
 from .admin import BillingNotificationAdmin, ModuleAdmin, PlanAdmin, PlanModuleAdmin, SubscriptionAdmin, SubscriptionModuleAdmin, SubscriptionInvoiceAdmin
 from .models import BillingNotification, BillingPayment, BillingProviderEvent, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionChange, SubscriptionInvoice, SubscriptionModule
-from .services import add_subscription_module, cancel_subscription, change_subscription_plan, generate_billing_notifications, generate_subscription_invoice, generate_subscription_invoices, get_module_limit, get_module_limits, get_active_modules, has_module, mark_subscription_past_due, provision_organization_subscription, record_manual_invoice_payment, record_provider_event, require_module, suspend_expired_subscriptions
+from .services import add_subscription_module, cancel_subscription, change_subscription_plan, enforce_module_limit, generate_billing_notifications, generate_subscription_invoice, generate_subscription_invoices, get_module_limit, get_module_limits, get_active_modules, has_module, mark_subscription_past_due, provision_organization_subscription, record_manual_invoice_payment, record_provider_event, require_module, suspend_expired_subscriptions
 
 
 class BillingTests(TestCase):
@@ -193,6 +193,44 @@ class BillingTests(TestCase):
         self.assertEqual(get_module_limit(self.first_org, "core", "users"), 5)
         catalog = Module.objects.get(code="catalog")
         self.assertEqual(set(get_active_modules(self.first_org)), {self.core, catalog})
+
+    def test_module_limit_blocks_new_records_and_allows_existing_records_after_downgrade(self):
+        PlanModule.objects.create(plan=self.plan, module=self.core, included=True, limits={"users": 2, "stores": 1})
+        self.first_subscription.status = Subscription.Status.ACTIVE
+        self.first_subscription.save(update_fields=["status", "updated_at"])
+        Store.objects.create(organization=self.first_org, name="Matriz", code="M01")
+
+        with self.assertRaises(ValidationError):
+            enforce_module_limit(self.first_org, "core", "users")
+        with self.assertRaises(ValidationError):
+            enforce_module_limit(self.first_org, "core", "stores")
+
+        PlanModule.objects.filter(plan=self.plan, module=self.core).update(limits={"users": 1, "stores": 1})
+        self.assertEqual(UserProfile.objects.filter(organization=self.first_org).count(), 2)
+        self.assertTrue(UserProfile.objects.filter(pk=self.operator.profile.pk).exists())
+
+    def test_missing_or_unlimited_module_limit_allows_new_records(self):
+        PlanModule.objects.create(plan=self.plan, module=self.core, included=True, limits={})
+        self.first_subscription.status = Subscription.Status.ACTIVE
+        self.first_subscription.save(update_fields=["status", "updated_at"])
+
+        enforce_module_limit(self.first_org, "core", "users")
+
+        PlanModule.objects.filter(plan=self.plan, module=self.core).update(limits={"users": None})
+        enforce_module_limit(self.first_org, "core", "users")
+
+    def test_module_limit_is_tenant_scoped(self):
+        PlanModule.objects.create(plan=self.plan, module=self.core, included=True, limits={"users": 2})
+        self.first_subscription.status = Subscription.Status.ACTIVE
+        self.first_subscription.save(update_fields=["status", "updated_at"])
+        self.second_subscription.status = Subscription.Status.ACTIVE
+        self.second_subscription.save(update_fields=["status", "updated_at"])
+        second_user = get_user_model().objects.create_user(username="second-tenant-user", password="test-pass")
+        UserProfile.objects.create(user=second_user, organization=self.second_org, role=UserProfile.Role.OPERATOR)
+
+        with self.assertRaises(ValidationError):
+            enforce_module_limit(self.first_org, "core", "users")
+        enforce_module_limit(self.second_org, "core", "users")
 
     def test_subscription_addon_and_override_limits(self):
         PlanModule.objects.create(plan=self.plan, module=self.core, included=True, limits={"users": 5, "stores": 1})

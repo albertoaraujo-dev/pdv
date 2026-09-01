@@ -331,8 +331,14 @@ class UserAdmin(DjangoUserAdmin, ModelAdmin):
         if not request.user.is_superuser:
             obj.is_staff = False
             obj.is_superuser = False
-        super().save_model(request, obj, form, change)
         organization = get_user_organization(request.user)
+        if organization and not request.user.is_superuser and not change:
+            from apps.billing.models import Subscription
+            from apps.billing.services import enforce_module_limit
+
+            if Subscription.objects.filter(organization=organization).exists():
+                enforce_module_limit(organization, "core", "users")
+        super().save_model(request, obj, form, change)
         if organization and not change:
             role = form.cleaned_data.get("role", UserProfile.Role.OPERATOR) if form else UserProfile.Role.OPERATOR
             profile, _created = UserProfile.objects.get_or_create(
@@ -462,6 +468,13 @@ class StoreAdmin(NoDeleteAdminMixin, TenantScopedAdminMixin, ModelAdmin):
         return obj.active_users_count
 
     def save_model(self, request, obj, form, change):
+        organization = get_user_organization(request.user)
+        if organization and not request.user.is_superuser and not change:
+            from apps.billing.models import Subscription
+            from apps.billing.services import enforce_module_limit
+
+            if Subscription.objects.filter(organization=organization).exists():
+                enforce_module_limit(organization, "core", "stores")
         super().save_model(request, obj, form, change)
         if not request.user.is_superuser and not change and is_manager(request.user):
             UserStoreAccess.objects.get_or_create(profile=request.user.profile, store=obj)

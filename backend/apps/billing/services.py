@@ -365,6 +365,37 @@ def get_module_limit(organization, code, key, default=None):
     return get_module_limits(organization, code).get(key, default)
 
 
+def enforce_module_limit(organization, module_code, resource_key, increment=1):
+    """Allow a resource addition only when the tenant's effective entitlement permits it."""
+    if increment <= 0:
+        return
+
+    from apps.catalog.models import Product
+    from apps.tenants.models import Store, UserProfile
+
+    resource_querysets = {
+        "users": UserProfile.objects.filter(organization=organization, is_active=True),
+        "products": Product.objects.filter(organization=organization, is_active=True),
+        "stores": Store.objects.filter(organization=organization, is_active=True),
+    }
+    queryset = resource_querysets.get(resource_key)
+    if queryset is None:
+        raise ValidationError(f"Recurso de limite desconhecido: {resource_key}.")
+
+    limit = get_module_limit(organization, module_code, resource_key)
+    if limit is None:
+        return
+    try:
+        limit = int(limit)
+    except (TypeError, ValueError):
+        raise ValidationError(f"O limite de {resource_key} não é válido.")
+    current = queryset.count()
+    if current + increment > limit:
+        raise ValidationError(
+            f"O limite de {resource_key} para o módulo '{module_code}' foi atingido ({limit})."
+        )
+
+
 def _require_module_manager(actor, organization):
     if actor and actor.is_authenticated and actor.is_active and actor.is_superuser:
         return

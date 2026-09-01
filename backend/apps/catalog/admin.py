@@ -267,6 +267,16 @@ class ProductAdmin(NoDeleteAdminMixin, SimpleCatalogSaveActionsMixin, TenantScop
     search_fields = ["name", "sku", "barcode", "organization__name"]
     tenant_list_filter = [TenantCategoryFilter, TenantUnitFilter, ("is_active", BooleanRadioFilter)]
 
+    def save_model(self, request, obj, form, change):
+        organization = get_user_organization(request.user)
+        if organization and not request.user.is_superuser and not change:
+            from apps.billing.models import Subscription
+            from apps.billing.services import enforce_module_limit
+
+            if Subscription.objects.filter(organization=organization).exists():
+                enforce_module_limit(organization, "catalog", "products")
+        super().save_model(request, obj, form, change)
+
     def get_fieldsets(self, request, obj=None):
         identity_fields = ["name", "sku", "barcode"]
         if request.user.is_superuser or obj is not None:
