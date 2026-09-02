@@ -10,8 +10,8 @@ from rest_framework.test import APIClient
 
 from apps.tenants.models import Organization, Store, UserProfile
 
-from .admin import BillingNotificationAdmin, ModuleAdmin, PlanAdmin, PlanModuleAdmin, SubscriptionAdmin, SubscriptionModuleAdmin, SubscriptionInvoiceAdmin
-from .models import BillingNotification, BillingPayment, BillingProviderEvent, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionChange, SubscriptionInvoice, SubscriptionModule
+from .admin import BillingNotificationAdmin, ModuleAdmin, PlanAdmin, PlanModuleAdmin, SubscriptionAdmin, SubscriptionModuleAdmin, SubscriptionInvoiceAdmin, SubscriptionInvoiceItemAdmin
+from .models import BillingNotification, BillingPayment, BillingProviderEvent, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionChange, SubscriptionInvoice, SubscriptionInvoiceItem, SubscriptionModule
 from .services import add_subscription_module, cancel_subscription, change_subscription_plan, enforce_module_limit, generate_billing_notifications, generate_subscription_invoice, generate_subscription_invoices, get_module_limit, get_module_limits, get_active_modules, has_module, mark_subscription_past_due, provision_organization_subscription, record_manual_invoice_payment, record_provider_event, require_module, suspend_expired_subscriptions
 
 
@@ -105,6 +105,42 @@ class BillingTests(TestCase):
         self.assertEqual(first.amount, Decimal("19.90"))
         self.assertEqual((first.period_start, first.period_end), (date(2026, 9, 1), date(2026, 9, 30)))
         self.assertEqual(SubscriptionInvoice.objects.filter(subscription=self.first_subscription).count(), 2)
+
+    def test_invoice_generation_snapshots_plus_addon_prices_and_excludes_base_modules(self):
+        PlanModule.objects.create(plan=self.plan, module=self.reports, monthly_price=Decimal("7.50"))
+        self.first_subscription.status = Subscription.Status.ACTIVE
+        self.first_subscription.save(update_fields=["status", "updated_at"])
+        add_subscription_module(self.first_subscription, self.addon, actor=self.manager, monthly_price=Decimal("3.25"))
+
+        invoice = generate_subscription_invoice(self.first_subscription, "2026-09")
+
+        self.assertEqual(invoice.amount, Decimal("30.65"))
+        self.assertEqual(set(invoice.items.values_list("code", flat=True)), {"basic", "reports", "addon"})
+        self.assertFalse(invoice.items.filter(module__code__in=("core", "catalog")).exists())
+
+    def test_expired_addon_is_not_billed_and_downgrade_keeps_old_lines(self):
+        premium = Plan.objects.create(code="premium", name="Premium", monthly_price=Decimal("40.00"))
+        PlanModule.objects.create(plan=premium, module=self.reports, monthly_price=Decimal("9.00"))
+        self.first_subscription.plan = premium
+        self.first_subscription.status = Subscription.Status.ACTIVE
+        self.first_subscription.save(update_fields=["plan", "status", "updated_at"])
+        add_subscription_module(self.first_subscription, self.addon, actor=self.manager, monthly_price=Decimal("4.00"), ends_at=timezone.now() + timedelta(days=13))
+        old_invoice = generate_subscription_invoice(self.first_subscription, "2026-09")
+        future_invoice = generate_subscription_invoice(self.first_subscription, "2026-10")
+        change_subscription_plan(self.first_subscription, self.plan, actor=self.global_admin, reason="downgrade")
+
+        self.assertEqual(old_invoice.amount, Decimal("53.00"))
+        self.assertTrue(old_invoice.items.filter(code="reports").exists())
+        self.assertTrue(old_invoice.items.filter(code="addon").exists())
+        self.assertFalse(future_invoice.items.filter(code="addon").exists())
+
+    def test_paid_invoice_items_are_immutable_and_item_admin_is_global_only(self):
+        item = SubscriptionInvoiceItem.objects.create(invoice=self.invoice, item_type="plan", code="basic", description="Básico", amount=Decimal("19.90"))
+        record_manual_invoice_payment(self.invoice, actor=self.global_admin, idempotency_key="items-paid")
+        item.amount_override = Decimal("1.00")
+        with self.assertRaises(ValidationError):
+            item.save()
+        self.assertFalse(SubscriptionInvoiceItemAdmin(SubscriptionInvoiceItem, admin.site).has_change_permission(self.request_for(self.operator), item))
 
     def test_invoice_generation_skips_cancelled_suspended_and_other_tenants(self):
         self.first_subscription.status = Subscription.Status.CANCELLED

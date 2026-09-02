@@ -4,11 +4,12 @@ from django.db import IntegrityError, transaction
 import calendar
 from datetime import date, datetime, timedelta
 from django.utils import timezone
+from decimal import Decimal
 
 from apps.accounts.policies import get_user_profile
 from apps.tenants.models import Organization
 
-from .models import BillingNotification, BillingPayment, BillingProviderEvent, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionChange, SubscriptionInvoice, SubscriptionModule
+from .models import BillingNotification, BillingPayment, BillingProviderEvent, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionChange, SubscriptionInvoice, SubscriptionInvoiceItem, SubscriptionModule
 
 
 BASE_MODULE_CODES = ("core", "catalog")
@@ -111,18 +112,45 @@ def generate_subscription_invoice(subscription, period=None, *, period_end=None,
     ).first()
     if existing:
         return existing
+    plan_rows = {row.module_id: row for row in PlanModule.objects.select_related("module").filter(
+        plan=subscription.plan, included=True, module__is_active=True
+    ) if row.module.code not in BASE_MODULE_CODES}
+    subscription_rows = SubscriptionModule.objects.select_related("module").filter(
+        subscription=subscription, module__is_active=True
+    )
+    for row in subscription_rows:
+        active_for_period = not row.starts_at or row.starts_at.date() <= end
+        active_for_period = active_for_period and (not row.ends_at or row.ends_at.date() >= start)
+        if not row.included or not row.is_active or not active_for_period:
+            plan_rows.pop(row.module_id, None)
+        elif row.module.code not in BASE_MODULE_CODES:
+            plan_rows[row.module_id] = row
+
     invoice_data = {
         "organization": subscription.organization,
         "subscription": subscription,
-        "amount": subscription.plan.monthly_price,
+        "amount": Decimal("0.00"),
         "status": SubscriptionInvoice.Status.OPEN,
         "period_start": start,
         "period_end": end,
         "due_date": due_date or end,
     }
+    def create_invoice(number):
+        invoice = SubscriptionInvoice.objects.create(number=number, **invoice_data)
+        SubscriptionInvoiceItem.objects.create(invoice=invoice, item_type=SubscriptionInvoiceItem.ItemType.PLAN,
+            code=subscription.plan.code, description=subscription.plan.name, amount=subscription.plan.monthly_price)
+        for row in plan_rows.values():
+            price = row.monthly_price
+            if price is None and isinstance(row, SubscriptionModule):
+                price = PlanModule.objects.filter(plan=subscription.plan, module=row.module).values_list("monthly_price", flat=True).first()
+            SubscriptionInvoiceItem.objects.create(invoice=invoice, item_type=SubscriptionInvoiceItem.ItemType.MODULE,
+                module=row.module, code=row.module.code, description=row.module.name, amount=price or Decimal("0.00"))
+        invoice.recalculate_total()
+        return invoice
+
     try:
         with transaction.atomic():
-            return SubscriptionInvoice.objects.create(number=f"{start:%Y-%m}", **invoice_data)
+            return create_invoice(f"{start:%Y-%m}")
     except IntegrityError:
         existing = SubscriptionInvoice.objects.filter(
             subscription=subscription, period_start=start, period_end=end
@@ -130,7 +158,7 @@ def generate_subscription_invoice(subscription, period=None, *, period_end=None,
         if existing:
             return existing
         # Do not overwrite a manually numbered historical invoice.
-        return SubscriptionInvoice.objects.create(number=f"{start:%Y-%m}-{subscription.pk}", **invoice_data)
+        return create_invoice(f"{start:%Y-%m}-{subscription.pk}")
 
 
 def generate_subscription_invoices(*, period=None, organization=None, dry_run=False):
@@ -405,7 +433,7 @@ def _require_module_manager(actor, organization):
 
 
 @transaction.atomic
-def add_subscription_module(subscription, module, *, actor, starts_at=None, ends_at=None, limits=None):
+def add_subscription_module(subscription, module, *, actor, starts_at=None, ends_at=None, limits=None, monthly_price=None):
     subscription = Subscription.objects.select_for_update().select_related("organization").get(pk=subscription.pk)
     _require_module_manager(actor, subscription.organization)
     module = Module.objects.get(pk=module.pk)
@@ -421,11 +449,11 @@ def add_subscription_module(subscription, module, *, actor, starts_at=None, ends
     row, _created = SubscriptionModule.objects.get_or_create(
         subscription=subscription,
         module=module,
-        defaults={"organization": subscription.organization, "included": True, "starts_at": starts_at, "ends_at": ends_at, "limits": limits},
+        defaults={"organization": subscription.organization, "included": True, "starts_at": starts_at, "ends_at": ends_at, "limits": limits, "monthly_price": monthly_price},
     )
     if not _created:
         row.organization = subscription.organization
-        row.included, row.is_active, row.starts_at, row.ends_at, row.limits = True, True, starts_at, ends_at, limits
+        row.included, row.is_active, row.starts_at, row.ends_at, row.limits, row.monthly_price = True, True, starts_at, ends_at, limits, monthly_price
         row.save()
     return row
 

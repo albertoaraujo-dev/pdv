@@ -148,3 +148,5 @@ Modelo comercial de módulos:
 - Dependências são registros protegidos em `ModuleDependency`. Um módulo com dependência indisponível não é efetivo, e ciclos são rejeitados na validação.
 - O catálogo inicial de módulos é administrado pelo superusuário no Django Admin; instalações existentes preservam seus registros e podem marcar `core`/`catalog` como módulos base.
 - Há drift conhecido nas migrações de `accounts` em instalações antigas; confirme o estado aplicado antes de promover novas migrações e não remova dados históricos.
+
+Faturas novas preservam o plano e cada add-on PLUS como itens com preço congelado. `core` e `catalog` nunca são cobrados; preços podem ser ajustados antes do pagamento por administrador global. Faturas antigas continuam usando o campo `amount` e não são reconstituídas sem dados históricos suficientes.

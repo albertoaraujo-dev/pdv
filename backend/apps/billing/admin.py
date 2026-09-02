@@ -4,7 +4,7 @@ from unfold.admin import ModelAdmin
 
 from apps.tenants.admin import NoDeleteAdminMixin
 
-from .models import BillingNotification, BillingPayment, BillingProviderEvent, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionChange, SubscriptionInvoice, SubscriptionModule
+from .models import BillingNotification, BillingPayment, BillingProviderEvent, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionChange, SubscriptionInvoice, SubscriptionInvoiceItem, SubscriptionModule
 from .services import record_manual_invoice_payment
 
 
@@ -54,14 +54,14 @@ class ModuleDependencyAdmin(NoDeleteAdminMixin, GlobalBillingAdminMixin, ModelAd
 
 @admin.register(PlanModule)
 class PlanModuleAdmin(NoDeleteAdminMixin, GlobalBillingAdminMixin, ModelAdmin):
-    list_display = ["plan", "module", "included", "limits"]
+    list_display = ["plan", "module", "included", "monthly_price", "limits"]
     list_filter = ["included", "plan"]
     search_fields = ["plan__name", "module__code", "module__name"]
 
 
 @admin.register(SubscriptionModule)
 class SubscriptionModuleAdmin(NoDeleteAdminMixin, GlobalBillingAdminMixin, ModelAdmin):
-    list_display = ["organization", "subscription", "module", "included", "is_active", "starts_at", "ends_at", "limits"]
+    list_display = ["organization", "subscription", "module", "included", "monthly_price", "is_active", "starts_at", "ends_at", "limits"]
     list_filter = ["is_active", "module"]
     search_fields = ["organization__name", "module__code", "module__name"]
     readonly_fields = ["created_at", "updated_at"]
@@ -111,6 +111,23 @@ class SubscriptionInvoiceAdmin(NoDeleteAdminMixin, GlobalBillingAdminMixin, Mode
         self.message_user(request, f"{count} pagamento(s) manual(is) registrado(s).", messages.SUCCESS)
 
     actions = ["record_manual_payment"]
+
+    def get_readonly_fields(self, request, obj=None):
+        fields = list(super().get_readonly_fields(request, obj))
+        if obj and obj.status == SubscriptionInvoice.Status.PAID:
+            fields.extend(["organization", "subscription", "number", "amount", "status", "period_start", "period_end", "due_date"])
+        return fields
+
+
+@admin.register(SubscriptionInvoiceItem)
+class SubscriptionInvoiceItemAdmin(NoDeleteAdminMixin, GlobalBillingAdminMixin, ModelAdmin):
+    list_display = ["invoice", "item_type", "code", "amount", "amount_override"]
+    list_filter = ["item_type"]
+    search_fields = ["invoice__number", "code", "description"]
+    list_select_related = ["invoice", "module"]
+
+    def has_change_permission(self, request, obj=None):
+        return super().has_change_permission(request, obj) and not (obj and obj.invoice.status == SubscriptionInvoice.Status.PAID)
 
 
 @admin.register(BillingPayment)

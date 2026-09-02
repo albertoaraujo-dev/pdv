@@ -92,6 +92,7 @@ class PlanModule(models.Model):
     module = models.ForeignKey(Module, on_delete=models.PROTECT, related_name="plan_modules", verbose_name="módulo")
     included = models.BooleanField("incluído", default=True)
     limits = models.JSONField("limites", null=True, blank=True)
+    monthly_price = models.DecimalField("preço mensal do módulo", max_digits=12, decimal_places=2, null=True, blank=True)
 
     class Meta:
         ordering = ["plan__name", "module__name"]
@@ -125,6 +126,8 @@ class PlanModule(models.Model):
                 raise ValidationError("Um módulo incluído no plano precisa incluir suas dependências.")
         if self.limits is not None and not isinstance(self.limits, dict):
             raise ValidationError({"limits": "Os limites precisam ser um objeto JSON."})
+        if self.monthly_price is not None and self.monthly_price < 0:
+            raise ValidationError({"monthly_price": "O preço do módulo não pode ser negativo."})
 
     def save(self, *args, **kwargs):
         self.full_clean()
@@ -189,6 +192,7 @@ class SubscriptionModule(models.Model):
     starts_at = models.DateTimeField("inicia em", null=True, blank=True)
     ends_at = models.DateTimeField("termina em", null=True, blank=True)
     limits = models.JSONField("limites", null=True, blank=True)
+    monthly_price = models.DecimalField("preço mensal do módulo", max_digits=12, decimal_places=2, null=True, blank=True)
     created_at = models.DateTimeField("criado em", auto_now_add=True)
     updated_at = models.DateTimeField("atualizado em", auto_now=True)
 
@@ -214,6 +218,8 @@ class SubscriptionModule(models.Model):
             errors["ends_at"] = "O fim precisa ser posterior ao início."
         if self.limits is not None and not isinstance(self.limits, dict):
             errors["limits"] = "Os limites precisam ser um objeto JSON."
+        if self.monthly_price is not None and self.monthly_price < 0:
+            errors["monthly_price"] = "O preço do módulo não pode ser negativo."
         if errors:
             raise ValidationError(errors)
 
@@ -260,6 +266,10 @@ class SubscriptionInvoice(models.Model):
 
     def clean(self):
         errors = {}
+        if self.pk:
+            previous = type(self).objects.filter(pk=self.pk).values("status", "amount").first()
+            if previous and previous["status"] == self.Status.PAID and previous["amount"] != self.amount:
+                errors["amount"] = "O valor de uma fatura paga não pode ser alterado."
         if self.subscription_id and self.organization_id and self.subscription.organization_id != self.organization_id:
             errors["subscription"] = "A assinatura precisa pertencer à mesma organização da fatura."
         if bool(self.period_start) != bool(self.period_end):
@@ -275,6 +285,69 @@ class SubscriptionInvoice(models.Model):
 
     def __str__(self):
         return self.number
+
+    def calculate_total(self):
+        return sum((item.total_amount for item in self.items.all()), Decimal("0.00"))
+
+    def recalculate_total(self):
+        if self.status == self.Status.PAID:
+            raise ValidationError("O total de uma fatura paga não pode ser alterado.")
+        self.amount = self.calculate_total()
+        self.save(update_fields=["amount", "updated_at"])
+        return self.amount
+
+
+class SubscriptionInvoiceItem(models.Model):
+    class ItemType(models.TextChoices):
+        PLAN = "plan", "Plano"
+        MODULE = "module", "Módulo"
+
+    invoice = models.ForeignKey(SubscriptionInvoice, on_delete=models.PROTECT, related_name="items", verbose_name="fatura")
+    item_type = models.CharField("tipo", max_length=16, choices=ItemType.choices)
+    module = models.ForeignKey(Module, on_delete=models.PROTECT, null=True, blank=True, related_name="invoice_items", verbose_name="módulo")
+    code = models.CharField("código", max_length=64)
+    description = models.CharField("descrição", max_length=200)
+    amount = models.DecimalField("valor", max_digits=12, decimal_places=2)
+    amount_override = models.DecimalField("valor sobrescrito", max_digits=12, decimal_places=2, null=True, blank=True)
+    created_at = models.DateTimeField("criado em", auto_now_add=True)
+
+    class Meta:
+        ordering = ["item_type", "code"]
+        verbose_name = "item de fatura"
+        verbose_name_plural = "itens de faturas"
+
+    @property
+    def total_amount(self):
+        return self.amount if self.amount_override is None else self.amount_override
+
+    def clean(self):
+        errors = {}
+        invoice_status = SubscriptionInvoice.objects.filter(pk=self.invoice_id).values_list("status", flat=True).first() if self.invoice_id else None
+        if self.invoice_id and invoice_status == SubscriptionInvoice.Status.PAID:
+            if self.pk:
+                old = type(self).objects.filter(pk=self.pk).values("amount", "amount_override", "code", "description").first()
+                if old and any(old[key] != getattr(self, key) for key in ("amount", "amount_override", "code", "description")):
+                    errors["invoice"] = "Os itens de uma fatura paga são somente leitura."
+            else:
+                errors["invoice"] = "Não é possível adicionar itens a uma fatura paga."
+        if self.item_type == self.ItemType.PLAN and self.module_id:
+            errors["module"] = "O item de plano não pode ter módulo."
+        if self.item_type == self.ItemType.MODULE and not self.module_id:
+            errors["module"] = "O item de módulo precisa ter módulo."
+        if self.module_id and self.module.is_base:
+            errors["module"] = "Módulos base não são faturáveis."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        result = super().save(*args, **kwargs)
+        if self.invoice.status != SubscriptionInvoice.Status.PAID:
+            self.invoice.recalculate_total()
+        return result
+
+    def __str__(self):
+        return self.description
 
 
 class BillingNotification(models.Model):

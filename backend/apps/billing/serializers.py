@@ -53,6 +53,11 @@ class BillingInvoicePlanSerializer(serializers.Serializer):
 
 class BillingInvoiceSerializer(serializers.ModelSerializer):
     plan = BillingInvoicePlanSerializer(source="subscription.plan", read_only=True)
+    items = serializers.SerializerMethodField()
+
+    def get_items(self, invoice):
+        return [{"type": item.item_type, "code": item.code, "description": item.description,
+                 "amount": str(item.total_amount)} for item in invoice.items.all()]
 
     class Meta:
         model = SubscriptionInvoice
@@ -66,5 +71,6 @@ class BillingInvoiceSerializer(serializers.ModelSerializer):
             "period_end",
             "paid_at",
             "plan",
+            "items",
         )
         read_only_fields = fields

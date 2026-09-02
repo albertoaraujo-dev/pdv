@@ -62,6 +62,6 @@ class BillingInvoiceListView(generics.ListAPIView):
         organization = get_user_organization(self.request.user)
         if not organization:
             return SubscriptionInvoice.objects.none()
-        return SubscriptionInvoice.objects.select_related("subscription__plan").filter(
+        return SubscriptionInvoice.objects.select_related("subscription__plan").prefetch_related("items").filter(
             organization_id=organization.pk
         )
