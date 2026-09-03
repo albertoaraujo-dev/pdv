@@ -11,6 +11,7 @@ const config = useRuntimeConfig()
         <div class="links">
           <a :href="`${config.public.apiBase}/health/`">Health backend</a>
         <NuxtLink to="/pdv">Abrir PDV</NuxtLink>
+        <NuxtLink to="/planos">Ver planos</NuxtLink>
         <a :href="`${config.public.apiBase}/admin/`">Abrir painel</a>
       </div>
     </section>

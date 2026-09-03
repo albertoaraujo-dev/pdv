@@ -59,3 +59,25 @@ export type BillingInvoicePage = {
   previous: string | null
   results: BillingInvoice[]
 }
+
+export type BillingCatalogModule = {
+  code: string
+  name: string
+  description: string
+  included: boolean
+  is_base: boolean
+  is_free: boolean
+  limits: Record<string, unknown>
+  monthly_price: string
+  dependencies: string[]
+}
+
+export type BillingCatalogPlan = {
+  code: string
+  name: string
+  description: string
+  monthly_price: string
+  trial_days: number
+  is_default: boolean
+  modules: BillingCatalogModule[]
+}
