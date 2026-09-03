@@ -9,7 +9,7 @@ from decimal import Decimal
 from apps.accounts.policies import get_user_profile
 from apps.tenants.models import Organization
 
-from .models import BillingNotification, BillingPayment, BillingProviderEvent, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionChange, SubscriptionInvoice, SubscriptionInvoiceItem, SubscriptionModule
+from .models import BillingNotification, BillingPayment, BillingPlanRequest, BillingProviderEvent, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionChange, SubscriptionInvoice, SubscriptionInvoiceItem, SubscriptionModule
 
 
 BASE_MODULE_CODES = ("core", "catalog")
@@ -514,3 +514,59 @@ def record_provider_event(*, event_id, provider, event_type, payload, organizati
     except IntegrityError:
         event = BillingProviderEvent.objects.get(event_id=event_id)
     return event
+
+
+@transaction.atomic
+def create_billing_plan_request(*, organization, requester, request_key, requested_plan=None, requested_module=None, notes=""):
+    if not request_key:
+        raise ValidationError("Uma chave da solicitação é obrigatória.")
+    profile = get_user_profile(requester)
+    if not profile or profile.organization_id != organization.pk or not profile.is_active or profile.role not in (profile.Role.ADMIN, profile.Role.MANAGER):
+        raise PermissionDenied("Somente administradores e gerentes podem solicitar alterações de billing.")
+    existing = BillingPlanRequest.objects.select_for_update().filter(organization=organization, request_key=request_key).first()
+    if existing:
+        if existing.status == BillingPlanRequest.Status.OPEN:
+            if existing.requested_plan_id != getattr(requested_plan, "pk", None) or existing.requested_module_id != getattr(requested_module, "pk", None):
+                raise ValidationError("A chave da solicitação já foi usada para outro alvo.")
+            existing._was_created = False
+            return existing
+        raise ValidationError("A chave da solicitação já foi utilizada.")
+    request = BillingPlanRequest.objects.create(
+        organization=organization, requester=requester, request_key=request_key,
+        requested_plan=requested_plan, requested_module=requested_module, notes=notes or "",
+    )
+    request._was_created = True
+    return request
+
+
+@transaction.atomic
+def approve_billing_plan_request(request, *, reviewer):
+    _require_global_admin(reviewer)
+    request = BillingPlanRequest.objects.select_for_update().select_related("organization", "requested_plan", "requested_module").get(pk=request.pk)
+    if request.status != BillingPlanRequest.Status.OPEN:
+        return request
+    subscription = Subscription.objects.get(organization=request.organization)
+    reason = request.notes or "Solicitação de billing aprovada"
+    if request.requested_plan_id:
+        change_subscription_plan(subscription, request.requested_plan, actor=reviewer, reason=reason)
+    else:
+        add_subscription_module(subscription, request.requested_module, actor=reviewer)
+    request.status = BillingPlanRequest.Status.APPROVED
+    request.reviewed_by = reviewer
+    request.reviewed_at = timezone.now()
+    request.save(update_fields=["status", "reviewed_by", "reviewed_at"])
+    return request
+
+
+@transaction.atomic
+def reject_billing_plan_request(request, *, reviewer, notes=""):
+    _require_global_admin(reviewer)
+    request = BillingPlanRequest.objects.select_for_update().get(pk=request.pk)
+    if request.status == BillingPlanRequest.Status.OPEN:
+        request.status = BillingPlanRequest.Status.REJECTED
+        request.reviewed_by = reviewer
+        request.reviewed_at = timezone.now()
+        if notes:
+            request.notes = notes
+        request.save(update_fields=["status", "reviewed_by", "reviewed_at", "notes"])
+    return request

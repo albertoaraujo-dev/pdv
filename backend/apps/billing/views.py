@@ -1,13 +1,13 @@
 from django.db.models import Prefetch
-from rest_framework import generics, permissions
+from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.policies import get_user_organization, is_inactive_for_login
 
-from .models import BillingNotification, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionInvoice
-from .serializers import BillingCatalogPlanSerializer, BillingInvoiceSerializer, BillingStatusSerializer
-from .services import get_active_modules, get_module_limits
+from .models import BillingNotification, BillingPlanRequest, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionInvoice
+from .serializers import BillingCatalogPlanSerializer, BillingInvoiceSerializer, BillingPlanRequestSerializer, BillingStatusSerializer
+from .services import create_billing_plan_request, get_active_modules, get_module_limits
 
 
 class CanReadBillingStatus(permissions.BasePermission):
@@ -93,3 +93,28 @@ class BillingInvoiceListView(generics.ListAPIView):
         return SubscriptionInvoice.objects.select_related("subscription__plan").prefetch_related("items").filter(
             organization_id=organization.pk
         )
+
+
+class CanRequestBillingChange(permissions.BasePermission):
+    def has_permission(self, request, view):
+        user = request.user
+        profile = getattr(user, "profile", None)
+        return bool(user and user.is_authenticated and not user.is_superuser and not is_inactive_for_login(user) and profile and profile.role in (profile.Role.ADMIN, profile.Role.MANAGER))
+
+
+class BillingPlanRequestListCreateView(generics.ListCreateAPIView):
+    permission_classes = [CanRequestBillingChange]
+    serializer_class = BillingPlanRequestSerializer
+    http_method_names = ["get", "post", "head", "options"]
+
+    def get_queryset(self):
+        organization = get_user_organization(self.request.user)
+        return BillingPlanRequest.objects.none() if not organization else BillingPlanRequest.objects.select_related("requested_plan", "requested_module", "requester", "reviewed_by").filter(organization_id=organization.pk)
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        organization = get_user_organization(request.user)
+        key = serializer.validated_data.pop("request_key", None) or request.headers.get("Idempotency-Key")
+        obj = create_billing_plan_request(organization=organization, requester=request.user, request_key=key, **serializer.validated_data)
+        return Response(self.get_serializer(obj).data, status=status.HTTP_201_CREATED if getattr(obj, "_was_created", False) else status.HTTP_200_OK)

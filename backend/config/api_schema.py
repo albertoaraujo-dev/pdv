@@ -12,6 +12,7 @@ API_PATHS = {
     "/api/billing/status/": ["get"],
     "/api/billing/invoices/": ["get"],
     "/api/billing/plans/": ["get"],
+    "/api/billing/requests/": ["get", "post"],
     "/api/catalog/categories/": ["get"],
     "/api/catalog/categories/{id}/": ["get"],
     "/api/catalog/units/": ["get"],

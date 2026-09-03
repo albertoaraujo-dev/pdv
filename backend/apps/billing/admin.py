@@ -4,8 +4,8 @@ from unfold.admin import ModelAdmin
 
 from apps.tenants.admin import NoDeleteAdminMixin
 
-from .models import BillingNotification, BillingPayment, BillingProviderEvent, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionChange, SubscriptionInvoice, SubscriptionInvoiceItem, SubscriptionModule
-from .services import record_manual_invoice_payment
+from .models import BillingNotification, BillingPayment, BillingPlanRequest, BillingProviderEvent, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionChange, SubscriptionInvoice, SubscriptionInvoiceItem, SubscriptionModule
+from .services import approve_billing_plan_request, record_manual_invoice_payment, reject_billing_plan_request
 
 
 class GlobalBillingAdminMixin:
@@ -27,6 +27,42 @@ class GlobalBillingAdminMixin:
 
     def has_delete_permission(self, request, obj=None):
         return bool(request.user.is_superuser)
+
+
+@admin.register(BillingPlanRequest)
+class BillingPlanRequestAdmin(NoDeleteAdminMixin, GlobalBillingAdminMixin, ModelAdmin):
+    list_display = ["organization", "requester", "target", "status", "request_key", "reviewed_by", "created_at"]
+    list_filter = ["status", "created_at"]
+    search_fields = ["organization__name", "requester__username", "request_key"]
+    readonly_fields = ["organization", "requester", "requested_plan", "requested_module", "status", "request_key", "notes", "reviewed_by", "reviewed_at", "created_at"]
+    list_select_related = ["organization", "requester", "requested_plan", "requested_module", "reviewed_by"]
+
+    def target(self, obj):
+        return obj.requested_plan or obj.requested_module
+
+    @admin.action(description="Aprovar solicitações selecionadas")
+    def approve_requests(self, request, queryset):
+        count = 0
+        for billing_request in queryset.filter(status=BillingPlanRequest.Status.OPEN):
+            approve_billing_plan_request(billing_request, reviewer=request.user)
+            count += 1
+        self.message_user(request, f"{count} solicitação(ões) aprovada(s).", messages.SUCCESS)
+
+    @admin.action(description="Rejeitar solicitações selecionadas")
+    def reject_requests(self, request, queryset):
+        count = 0
+        for billing_request in queryset.filter(status=BillingPlanRequest.Status.OPEN):
+            reject_billing_plan_request(billing_request, reviewer=request.user)
+            count += 1
+        self.message_user(request, f"{count} solicitação(ões) rejeitada(s).", messages.SUCCESS)
+
+    actions = ["approve_requests", "reject_requests"]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(Plan)

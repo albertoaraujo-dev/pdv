@@ -10,9 +10,9 @@ from rest_framework.test import APIClient
 
 from apps.tenants.models import Organization, Store, UserProfile
 
-from .admin import BillingNotificationAdmin, ModuleAdmin, PlanAdmin, PlanModuleAdmin, SubscriptionAdmin, SubscriptionModuleAdmin, SubscriptionInvoiceAdmin, SubscriptionInvoiceItemAdmin
-from .models import BillingNotification, BillingPayment, BillingProviderEvent, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionChange, SubscriptionInvoice, SubscriptionInvoiceItem, SubscriptionModule
-from .services import add_subscription_module, cancel_subscription, change_subscription_plan, enforce_module_limit, generate_billing_notifications, generate_subscription_invoice, generate_subscription_invoices, get_module_limit, get_module_limits, get_active_modules, has_module, mark_subscription_past_due, provision_organization_subscription, record_manual_invoice_payment, record_provider_event, require_module, suspend_expired_subscriptions
+from .admin import BillingNotificationAdmin, BillingPlanRequestAdmin, ModuleAdmin, PlanAdmin, PlanModuleAdmin, SubscriptionAdmin, SubscriptionModuleAdmin, SubscriptionInvoiceAdmin, SubscriptionInvoiceItemAdmin
+from .models import BillingNotification, BillingPayment, BillingPlanRequest, BillingProviderEvent, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionChange, SubscriptionInvoice, SubscriptionInvoiceItem, SubscriptionModule
+from .services import add_subscription_module, approve_billing_plan_request, cancel_subscription, change_subscription_plan, create_billing_plan_request, enforce_module_limit, generate_billing_notifications, generate_subscription_invoice, generate_subscription_invoices, get_module_limit, get_module_limits, get_active_modules, has_module, mark_subscription_past_due, provision_organization_subscription, record_manual_invoice_payment, record_provider_event, reject_billing_plan_request, require_module, suspend_expired_subscriptions
 
 
 class BillingTests(TestCase):
@@ -655,3 +655,55 @@ class BillingTests(TestCase):
         self.assertIn("/api/billing/invoices/", schema["paths"])
         self.assertEqual(schema["paths"]["/api/billing/invoices/"]["get"]["responses"]["200"]["description"], "Sucesso")
         self.assertContains(docs, "/api/billing/invoices/")
+
+    def test_tenant_can_create_and_list_only_its_billing_requests(self):
+        self.api_client.force_authenticate(self.manager)
+        response = self.api_client.post("/api/billing/requests/", {"request_key": "plan-1", "requested_plan": "basic", "notes": "upgrade"}, format="json")
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["status"], BillingPlanRequest.Status.OPEN)
+        self.assertEqual(self.api_client.get("/api/billing/requests/").data["count"], 1)
+
+        other_user = get_user_model().objects.create_user(username="request-other", password="test-pass")
+        UserProfile.objects.create(user=other_user, organization=self.second_org, role=UserProfile.Role.ADMIN)
+        self.api_client.force_authenticate(other_user)
+        self.assertEqual(self.api_client.get("/api/billing/requests/").data["count"], 0)
+
+    def test_billing_request_requires_one_active_target_and_manager_role(self):
+        self.api_client.force_authenticate(self.operator)
+        self.assertEqual(self.api_client.post("/api/billing/requests/", {"request_key": "forbidden", "requested_plan": "basic"}, format="json").status_code, 403)
+        self.api_client.force_authenticate(self.manager)
+        for payload in ({"request_key": "none"}, {"request_key": "both", "requested_plan": "basic", "requested_module": "addon"}):
+            self.assertEqual(self.api_client.post("/api/billing/requests/", payload, format="json").status_code, 400)
+        inactive = Plan.objects.create(code="inactive-request", name="Inativo", is_active=False)
+        response = self.api_client.post("/api/billing/requests/", {"request_key": "inactive", "requested_plan": inactive.code}, format="json")
+        self.assertEqual(response.status_code, 400)
+
+    def test_open_billing_request_is_idempotent_but_key_cannot_be_reused_after_review(self):
+        first = create_billing_plan_request(organization=self.first_org, requester=self.manager, request_key="same", requested_module=self.addon)
+        second = create_billing_plan_request(organization=self.first_org, requester=self.manager, request_key="same", requested_module=self.addon)
+        self.assertEqual(first.pk, second.pk)
+        reject_billing_plan_request(first, reviewer=self.global_admin)
+        with self.assertRaises(ValidationError):
+            create_billing_plan_request(organization=self.first_org, requester=self.manager, request_key="same", requested_module=self.addon)
+
+    def test_approval_changes_only_requested_entitlement_and_never_pays_invoice(self):
+        premium = Plan.objects.create(code="request-premium", name="Premium")
+        billing_request = create_billing_plan_request(organization=self.first_org, requester=self.manager, request_key="approve", requested_plan=premium)
+        approve_billing_plan_request(billing_request, reviewer=self.global_admin)
+        self.first_subscription.refresh_from_db()
+        self.invoice.refresh_from_db()
+        billing_request.refresh_from_db()
+        self.assertEqual(self.first_subscription.plan_id, premium.pk)
+        self.assertEqual(billing_request.status, BillingPlanRequest.Status.APPROVED)
+        self.assertEqual(self.invoice.status, SubscriptionInvoice.Status.OPEN)
+
+    def test_billing_request_admin_is_read_only_global_only(self):
+        model_admin = BillingPlanRequestAdmin(BillingPlanRequest, admin.site)
+        self.assertFalse(model_admin.has_add_permission(self.request_for(self.global_admin)))
+        self.assertFalse(model_admin.has_change_permission(self.request_for(self.global_admin)))
+        self.assertFalse(model_admin.has_module_permission(self.request_for(self.operator)))
+
+    def test_billing_requests_are_documented(self):
+        schema = self.api_client.get("/api/schema/").json()
+        self.assertEqual(set(schema["paths"]["/api/billing/requests/"]), {"get", "post"})
+        self.assertContains(self.api_client.get("/api/docs/"), "/api/billing/requests/")

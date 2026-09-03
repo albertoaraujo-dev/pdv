@@ -481,3 +481,62 @@ class BillingProviderEvent(models.Model):
 
     def __str__(self):
         return f"{self.provider}: {self.event_id}"
+
+
+class BillingPlanRequest(models.Model):
+    class Status(models.TextChoices):
+        OPEN = "open", "Aberta"
+        APPROVED = "approved", "Aprovada"
+        REJECTED = "rejected", "Rejeitada"
+        CANCELLED = "cancelled", "Cancelada"
+
+    organization = models.ForeignKey(Organization, on_delete=models.PROTECT, related_name="billing_plan_requests", verbose_name="organização")
+    requester = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="billing_plan_requests", verbose_name="solicitante")
+    requested_plan = models.ForeignKey(Plan, on_delete=models.PROTECT, null=True, blank=True, related_name="billing_requests", verbose_name="plano solicitado")
+    requested_module = models.ForeignKey(Module, on_delete=models.PROTECT, null=True, blank=True, related_name="billing_requests", verbose_name="módulo solicitado")
+    status = models.CharField("status", max_length=16, choices=Status.choices, default=Status.OPEN)
+    request_key = models.CharField("chave da solicitação", max_length=200)
+    notes = models.TextField("observações", blank=True)
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="reviewed_billing_requests", verbose_name="revisado por")
+    reviewed_at = models.DateTimeField("revisado em", null=True, blank=True)
+    created_at = models.DateTimeField("criada em", auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.CheckConstraint(
+                condition=(models.Q(requested_plan__isnull=False) & models.Q(requested_module__isnull=True)) | (models.Q(requested_plan__isnull=True) & models.Q(requested_module__isnull=False)),
+                name="billing_request_exactly_one_target",
+            ),
+            models.UniqueConstraint(fields=["organization", "request_key"], name="unique_billing_request_key_per_org"),
+        ]
+        indexes = [models.Index(fields=["organization", "status", "created_at"])]
+        verbose_name = "solicitação de billing"
+        verbose_name_plural = "solicitações de billing"
+
+    def clean(self):
+        errors = {}
+        if not self.request_key:
+            errors["request_key"] = "A chave da solicitação é obrigatória."
+        if not self.requested_plan_id and not self.requested_module_id or self.requested_plan_id and self.requested_module_id:
+            errors["requested_plan"] = "Informe exatamente um plano ou módulo."
+        if self.organization_id and not self.organization.is_active:
+            errors["organization"] = "A organização precisa estar ativa."
+        if self.requester_id:
+            profile = getattr(self.requester, "profile", None)
+            if not profile or profile.organization_id != self.organization_id:
+                errors["requester"] = "O solicitante precisa pertencer à mesma organização."
+        if self.requested_plan_id and not self.requested_plan.is_active:
+            errors["requested_plan"] = "O plano solicitado precisa estar ativo."
+        if self.requested_module_id and (not self.requested_module.is_active or self.requested_module.is_base):
+            errors["requested_module"] = "O módulo solicitado precisa ser um add-on ativo."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def __str__(self):
+        target = self.requested_plan or self.requested_module
+        return f"{self.organization} - {target} ({self.get_status_display()})"

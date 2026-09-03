@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Plan, SubscriptionInvoice
+from .models import BillingPlanRequest, Module, Plan, SubscriptionInvoice
 
 
 class BillingModuleStatusSerializer(serializers.Serializer):
@@ -126,3 +126,21 @@ class BillingInvoiceSerializer(serializers.ModelSerializer):
             "items",
         )
         read_only_fields = fields
+
+
+class BillingPlanRequestSerializer(serializers.ModelSerializer):
+    request_key = serializers.CharField(required=False)
+    requested_plan = serializers.SlugRelatedField(slug_field="code", queryset=Plan.objects.filter(is_active=True), allow_null=True, required=False)
+    requested_module = serializers.SlugRelatedField(slug_field="code", queryset=Module.objects.filter(is_active=True, is_base=False), allow_null=True, required=False)
+    requester = serializers.CharField(source="requester.username", read_only=True)
+    reviewed_by = serializers.CharField(source="reviewed_by.username", read_only=True, allow_null=True)
+
+    class Meta:
+        model = BillingPlanRequest
+        fields = ("id", "request_key", "requested_plan", "requested_module", "status", "notes", "requester", "reviewed_by", "reviewed_at", "created_at")
+        read_only_fields = ("id", "status", "requester", "reviewed_by", "reviewed_at", "created_at")
+
+    def validate(self, attrs):
+        if bool(attrs.get("requested_plan")) == bool(attrs.get("requested_module")):
+            raise serializers.ValidationError("Informe exatamente um plano ou módulo.")
+        return attrs
