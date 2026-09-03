@@ -84,6 +84,7 @@ docker compose restart frontend
 - Cancelamento e mudanças de plano são serviços restritos ao administrador global. Cada mudança é registrada em `SubscriptionChange`; faturas e módulos históricos nunca são apagados, e um pagamento reativa assinaturas não canceladas.
 - A geração mensal idempotente cria faturas abertas por período, sem gateway ou cobrança automática: `python manage.py generate_subscription_invoices --period 2026-09`; aceita `--organization ID` e `--dry-run`. Uma fatura por assinatura e período é garantida no banco, e o preço do plano vigente é congelado na fatura.
 - Usuários autenticados de uma organização podem consultar seu status somente leitura em `/api/billing/status/`, incluindo ciclo da assinatura, plano, módulos efetivos com limites e as dez notificações mais recentes. O endpoint é escopado à organização do usuário e não expõe payloads de provedor; superusuários usam o Admin global para billing.
+- O catálogo comercial somente leitura está disponível publicamente em `GET /api/billing/plans/`, com planos ativos, preço mensal, trial, módulos incluídos, limites, dependências e preços mensais. Apenas módulos ativos são retornados; `core` e `catalog` aparecem como base/gratuitos, enquanto `sales` e módulos PLUS aparecem com sua semântica comercial. Não há endpoints de mutação no catálogo.
 
 ## Observações
 
@@ -145,6 +146,7 @@ Modelo comercial de módulos:
 - Dependências, módulos ativos e limites devem ser validados no backend; dados históricos não são apagados quando um módulo é removido.
 - `core` e `catalog` são módulos base obrigatórios e efetivos em toda assinatura `trial` ou `active`; eles não precisam ser incluídos no plano nem podem ser removidos como add-on.
 - O plano usado na criação é escolhido por `Plan.is_default=True` e `is_active=True`, não por gateway; deve incluir o módulo `sales`.
+- A UI pode consultar `GET /api/billing/plans/` sem sessão para montar a oferta comercial; a resposta não contém organizações, assinaturas, faturas ou dados de provedor.
 - Dependências são registros protegidos em `ModuleDependency`. Um módulo com dependência indisponível não é efetivo, e ciclos são rejeitados na validação.
 - O catálogo inicial de módulos é administrado pelo superusuário no Django Admin; instalações existentes preservam seus registros e podem marcar `core`/`catalog` como módulos base.
 - Há drift conhecido nas migrações de `accounts` em instalações antigas; confirme o estado aplicado antes de promover novas migrações e não remova dados históricos.

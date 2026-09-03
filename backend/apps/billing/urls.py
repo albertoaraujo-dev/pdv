@@ -1,9 +1,10 @@
 from django.urls import path
 
-from .views import BillingInvoiceListView, BillingStatusView
+from .views import BillingCatalogView, BillingInvoiceListView, BillingStatusView
 
 
 urlpatterns = [
+    path("plans/", BillingCatalogView.as_view(), name="billing-plans"),
     path("status/", BillingStatusView.as_view(), name="billing-status"),
     path("invoices/", BillingInvoiceListView.as_view(), name="billing-invoices"),
 ]

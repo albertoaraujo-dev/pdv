@@ -48,6 +48,38 @@ class BillingTests(TestCase):
         self.assertTrue(has_module(organization, "catalog"))
         self.assertTrue(has_module(organization, "sales"))
 
+    def test_public_plan_catalog_filters_inactive_rows_and_exposes_commercial_metadata(self):
+        catalog = Module.objects.get(code="catalog")
+        sales, _ = Module.objects.get_or_create(code="sales", defaults={"name": "PDV"})
+        plus = Module.objects.create(code="plus-reports", name="Relatórios PLUS", description="Indicadores")
+        inactive_module = Module.objects.create(code="hidden", name="Oculto")
+        ModuleDependency.objects.get_or_create(module=sales, depends_on=catalog)
+        PlanModule.objects.create(plan=self.plan, module=sales, limits={"stores": 2})
+        PlanModule.objects.create(plan=self.plan, module=plus, limits={"reports": 10}, monthly_price=Decimal("8.50"))
+        PlanModule.objects.create(plan=self.plan, module=inactive_module, monthly_price=Decimal("99.00"))
+        inactive_module.is_active = False
+        inactive_module.save(update_fields=["is_active", "updated_at"])
+        Plan.objects.create(code="hidden-plan", name="Oculto", is_active=False)
+
+        response = self.api_client.get("/api/billing/plans/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual({plan["code"] for plan in response.data}, {"basic", "mvp"})
+        basic = next(plan for plan in response.data if plan["code"] == "basic")
+        modules = {module["code"]: module for module in basic["modules"]}
+        self.assertEqual(set(modules), {"core", "catalog", "sales", "plus-reports"})
+        self.assertEqual(modules["core"]["monthly_price"], "0.00")
+        self.assertTrue(modules["core"]["is_base"])
+        self.assertTrue(modules["core"]["is_free"])
+        self.assertEqual(modules["plus-reports"]["monthly_price"], "8.50")
+        self.assertEqual(modules["plus-reports"]["limits"], {"reports": 10})
+        self.assertEqual(modules["sales"]["dependencies"], ["catalog"])
+        self.assertNotIn("hidden", modules)
+        self.assertNotContains(response, "Primeira")
+        self.assertNotContains(response, "gateway_provider")
+        self.assertNotContains(response, "provider_payment_id")
+        self.assertEqual(self.api_client.post("/api/billing/plans/", {}).status_code, 405)
+
     def test_provisioning_is_idempotent(self):
         organization = Organization.objects.create(name="Nova")
 

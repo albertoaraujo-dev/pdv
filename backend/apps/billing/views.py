@@ -1,11 +1,12 @@
+from django.db.models import Prefetch
 from rest_framework import generics, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.policies import get_user_organization, is_inactive_for_login
 
-from .models import BillingNotification, Subscription, SubscriptionInvoice
-from .serializers import BillingInvoiceSerializer, BillingStatusSerializer
+from .models import BillingNotification, Module, ModuleDependency, Plan, PlanModule, Subscription, SubscriptionInvoice
+from .serializers import BillingCatalogPlanSerializer, BillingInvoiceSerializer, BillingStatusSerializer
 from .services import get_active_modules, get_module_limits
 
 
@@ -51,6 +52,33 @@ class BillingStatusView(APIView):
             "recent_notifications": notifications,
         }
         return Response(BillingStatusSerializer(data).data)
+
+
+class BillingCatalogView(generics.ListAPIView):
+    permission_classes = [permissions.AllowAny]
+    serializer_class = BillingCatalogPlanSerializer
+    http_method_names = ["get", "head", "options"]
+
+    def get_queryset(self):
+        active_dependencies = ModuleDependency.objects.select_related("depends_on").filter(
+            is_active=True, depends_on__is_active=True
+        )
+        active_plan_modules = PlanModule.objects.select_related("module").prefetch_related(
+            Prefetch("module__dependencies", queryset=active_dependencies)
+        ).filter(included=True, module__is_active=True)
+        return Plan.objects.filter(is_active=True).prefetch_related(
+            Prefetch("plan_modules", queryset=active_plan_modules),
+        )
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        base_modules = list(Module.objects.filter(is_active=True, is_base=True).prefetch_related(
+            Prefetch("dependencies", queryset=ModuleDependency.objects.select_related("depends_on").filter(
+                is_active=True, depends_on__is_active=True
+            ))
+        ))
+        serializer = self.get_serializer(queryset, many=True, context={"base_modules": base_modules})
+        return Response(serializer.data)
 
 
 class BillingInvoiceListView(generics.ListAPIView):
