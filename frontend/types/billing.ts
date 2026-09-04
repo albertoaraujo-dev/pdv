@@ -81,3 +81,23 @@ export type BillingCatalogPlan = {
   is_default: boolean
   modules: BillingCatalogModule[]
 }
+
+export type BillingPlanRequest = {
+  id: number
+  request_key: string
+  requested_plan: string | null
+  requested_module: string | null
+  status: string
+  notes: string
+  requester: string
+  reviewed_by: string | null
+  reviewed_at: string | null
+  created_at: string
+}
+
+export type BillingPlanRequestPage = {
+  count: number
+  next: string | null
+  previous: string | null
+  results: BillingPlanRequest[]
+}

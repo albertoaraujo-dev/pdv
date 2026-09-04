@@ -2,6 +2,18 @@
 import type { BillingCatalogModule } from '~/types/billing'
 
 const { data: plans, pending, error, refresh } = useBillingPlans()
+type CurrentUser = { profile?: { role: string | null } }
+const { data: currentUser } = await useFetch<CurrentUser>(`${useRuntimeConfig().public.apiBase}/api/auth/me/`, {
+  credentials: 'include',
+  server: false,
+  immediate: true,
+  key: 'plans-current-user'
+})
+const { createRequest } = useBillingRequests()
+const requestTarget = ref<string | null>(null)
+const requestMessage = ref('')
+const requestError = ref('')
+const canRequest = computed(() => ['admin', 'manager'].includes(currentUser.value?.profile?.role || ''))
 
 const hasError = computed(() => Boolean(error.value))
 
@@ -35,6 +47,28 @@ function modulePrice(module: BillingCatalogModule) {
 
 function dependencyNames(module: BillingCatalogModule) {
   return module.dependencies.length ? module.dependencies.join(', ') : ''
+}
+
+async function requestPlan(code: string) {
+  await submitRequest({ requested_plan: code }, `plan:${code}`)
+}
+
+async function requestModule(code: string) {
+  await submitRequest({ requested_module: code }, `module:${code}`)
+}
+
+async function submitRequest(target: { requested_plan?: string; requested_module?: string }, targetKey: string) {
+  requestTarget.value = targetKey
+  requestMessage.value = ''
+  requestError.value = ''
+  try {
+    await createRequest(target, '', `${targetKey}:${Date.now()}`)
+    requestMessage.value = 'Solicitação enviada. A equipe responsável analisará o pedido.'
+  } catch (error: any) {
+    requestError.value = error?.data?.detail || Object.values(error?.data || {}).flat().join(' ') || 'Não foi possível enviar a solicitação agora.'
+  } finally {
+    requestTarget.value = null
+  }
 }
 </script>
 
@@ -88,15 +122,26 @@ function dependencyNames(module: BillingCatalogModule) {
             <div class="module-title"><span class="check">✓</span><strong>{{ module.name }}</strong><span class="module-badge" :class="{ plus: !module.is_base && !module.is_free }">{{ moduleLabel(module) }}</span></div>
             <p v-if="module.description">{{ module.description }}</p>
             <div class="module-meta"><span>{{ modulePrice(module) }}</span><span v-if="dependencyNames(module)">Depende de: {{ dependencyNames(module) }}</span></div>
+            <button v-if="canRequest && !module.is_base && !module.is_free" type="button" class="request-button request-module" :disabled="requestTarget === `module:${module.code}`" @click="requestModule(module.code)">{{ requestTarget === `module:${module.code}` ? 'Enviando...' : 'Solicitar add-on PLUS' }}</button>
             <div v-if="Object.keys(module.limits).length" class="limits">
               <span v-for="(value, key) in module.limits" :key="key"><b>{{ formatLimit(value) }}</b> {{ formatLimitKey(String(key)) }}</span>
             </div>
           </li>
         </ul>
+        <button v-if="canRequest" type="button" class="request-button" :disabled="requestTarget === `plan:${plan.code}`" @click="requestPlan(plan.code)">{{ requestTarget === `plan:${plan.code}` ? 'Enviando...' : 'Solicitar este plano' }}</button>
       </article>
     </section>
 
-    <p class="footnote">Preços mensais exibidos conforme o catálogo público. Para contratar ou esclarecer dúvidas, fale com nossa equipe. Nenhum pagamento é processado nesta página.</p>
+    <section class="request-help" aria-live="polite">
+      <strong v-if="requestMessage" class="success-message">{{ requestMessage }}</strong>
+      <strong v-else-if="requestError" class="error-message">{{ requestError }}</strong>
+      <template v-else-if="!canRequest">
+        <strong>{{ currentUser ? 'Solicitações disponíveis apenas para administradores e gestores.' : 'Quer solicitar um plano ou add-on?' }}</strong>
+        <p>{{ currentUser ? 'Peça ajuda ao administrador da sua organização.' : 'Entre na sua conta para enviar uma solicitação ou fale com a equipe responsável.' }}</p>
+        <NuxtLink class="login-button" :to="`/login?next=${encodeURIComponent('/planos')}`">{{ currentUser ? 'Ver acesso da equipe' : 'Entrar para solicitar' }}</NuxtLink>
+      </template>
+    </section>
+    <p class="footnote">Preços mensais exibidos conforme o catálogo público. Solicitações são analisadas pela equipe responsável. Nenhum pagamento ou ativação é processado nesta página.</p>
   </main>
 </template>
 
@@ -118,5 +163,6 @@ h1, h2, p { margin-top: 0; } h1 { max-width: 760px; margin-bottom: 20px; font-si
 .price { margin-top: 24px; font-size: 2.45rem; font-weight: 950; letter-spacing: -.07em; } .price span, .price small { font-size: .9rem; letter-spacing: 0; } .price small { color: #718078; font-weight: 650; } .trial { margin: 5px 0 26px; color: #177b67; font-size: .85rem; font-weight: 800; }
 .modules-heading { display: flex; justify-content: space-between; padding: 14px 0 10px; border-top: 1px solid #e8e8e0; color: #718078; font-size: .76rem; font-weight: 850; text-transform: uppercase; letter-spacing: .08em; } .module-list { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; } .module-item { padding: 12px 0; border-bottom: 1px solid #edf0ec; } .module-title { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; } .check { color: #177b67; font-weight: 950; } .module-title strong { font-size: .95rem; } .module-badge { margin-left: auto; padding: 4px 7px; border-radius: 5px; background: #eaf4ee; color: #177b67; font-size: .64rem; font-weight: 900; text-transform: uppercase; } .module-badge.plus { background: #fff0cf; color: #95630d; } .module-item p { margin: 7px 0; color: #718078; font-size: .82rem; line-height: 1.45; } .module-meta { display: flex; justify-content: space-between; gap: 8px; color: #718078; font-size: .73rem; } .limits { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; } .limits span { padding: 4px 6px; border-radius: 5px; background: #f2f3ef; color: #718078; font-size: .7rem; } .limits b { color: #17201d; }
 .footnote { margin-top: 28px; color: #718078; font-size: .8rem; text-align: center; }
+.request-button, .login-button { display: inline-block; margin-top: 18px; padding: 10px 13px; border: 0; border-radius: 8px; background: #177b67; color: #fff; font-size: .78rem; font-weight: 850; text-decoration: none; cursor: pointer; } .request-button:disabled { cursor: wait; opacity: .55; } .request-module { margin-top: 10px; padding: 7px 9px; background: #fff0cf; color: #95630d; } .request-help { width: min(720px, 100%); margin: 34px auto 0; padding: 20px 24px; border: 1px solid #dce8df; border-radius: 14px; background: #fff; text-align: center; } .request-help p { margin: 7px 0 0; color: #718078; font-size: .9rem; } .success-message { color: #177b67; } .error-message { color: #a33a2c; }
 @media (max-width: 600px) { .foundation { grid-template-columns: 1fr; gap: 10px; } .state-panel { align-items: flex-start; flex-direction: column; } .retry-button { margin: 0; } .plan-card { padding: 22px; } }
 </style>
