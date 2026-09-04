@@ -6,6 +6,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.test import RequestFactory, TestCase, override_settings
 from django.utils import timezone
+from unittest.mock import patch
 from rest_framework.test import APIClient
 
 from apps.tenants.models import Organization, Store, UserProfile
@@ -27,7 +28,7 @@ class BillingTests(TestCase):
         )
         self.global_admin = get_user_model().objects.create_superuser(username="root", password="test-pass")
         self.operator = get_user_model().objects.create_user(username="operator", password="test-pass", is_staff=True)
-        UserProfile.objects.create(user=self.operator, organization=self.first_org, role=UserProfile.Role.ADMIN)
+        UserProfile.objects.create(user=self.operator, organization=self.first_org, role=UserProfile.Role.OPERATOR)
         self.manager = get_user_model().objects.create_user(username="manager", password="test-pass", is_staff=True)
         UserProfile.objects.create(user=self.manager, organization=self.first_org, role=UserProfile.Role.MANAGER)
         self.core, _ = Module.objects.get_or_create(code="core", defaults={"name": "Core", "is_base": True})
@@ -697,10 +698,65 @@ class BillingTests(TestCase):
         self.assertEqual(billing_request.status, BillingPlanRequest.Status.APPROVED)
         self.assertEqual(self.invoice.status, SubscriptionInvoice.Status.OPEN)
 
+    def test_billing_request_approval_is_idempotent_and_reject_is_safe_after_review(self):
+        billing_request = create_billing_plan_request(
+            organization=self.first_org, requester=self.manager, request_key="repeat-approval", requested_plan=self.plan
+        )
+
+        approve_billing_plan_request(billing_request, reviewer=self.global_admin)
+        approve_billing_plan_request(billing_request, reviewer=self.global_admin)
+
+        self.assertEqual(SubscriptionChange.objects.count(), 0)
+        self.assertEqual(BillingPayment.objects.count(), 0)
+        self.assertEqual(BillingPlanRequest.objects.get(pk=billing_request.pk).status, BillingPlanRequest.Status.APPROVED)
+        reject_billing_plan_request(billing_request, reviewer=self.global_admin)
+        self.assertEqual(BillingPlanRequest.objects.get(pk=billing_request.pk).status, BillingPlanRequest.Status.APPROVED)
+
+    def test_billing_request_admin_actions_report_errors_and_skip_reviewed_rows(self):
+        inactive_plan = Plan.objects.create(code="inactive-admin-request", name="Inativo")
+        first = create_billing_plan_request(
+            organization=self.first_org, requester=self.manager, request_key="admin-inactive", requested_plan=inactive_plan
+        )
+        inactive_plan.is_active = False
+        inactive_plan.save(update_fields=["is_active", "updated_at"])
+        reviewed = create_billing_plan_request(
+            organization=self.first_org, requester=self.manager, request_key="admin-reviewed", requested_module=self.addon
+        )
+        reject_billing_plan_request(reviewed, reviewer=self.global_admin)
+        model_admin = BillingPlanRequestAdmin(BillingPlanRequest, admin.site)
+        request = self.request_for(self.global_admin)
+        with patch.object(model_admin, "message_user") as message_user:
+            model_admin.approve_requests(request, BillingPlanRequest.objects.filter(pk__in=[first.pk, reviewed.pk]))
+
+        first.refresh_from_db()
+        self.assertEqual(first.status, BillingPlanRequest.Status.OPEN)
+        self.assertTrue(any("admin-inactive" in str(call.args[1]) for call in message_user.call_args_list))
+        self.assertTrue(any("já revisada" in str(call.args[1]) for call in message_user.call_args_list))
+
+    def test_billing_request_admin_actions_are_global_only(self):
+        model_admin = BillingPlanRequestAdmin(BillingPlanRequest, admin.site)
+        self.assertIn("approve_requests", model_admin.get_actions(self.request_for(self.global_admin)))
+        self.assertNotIn("approve_requests", model_admin.get_actions(self.request_for(self.operator)))
+
+    def test_billing_request_history_is_immutable_except_review_fields(self):
+        billing_request = create_billing_plan_request(
+            organization=self.first_org, requester=self.manager, request_key="immutable", requested_module=self.addon, notes="original"
+        )
+        billing_request.notes = "changed"
+        with self.assertRaises(ValidationError):
+            billing_request.save()
+        billing_request.refresh_from_db()
+        billing_request.status = BillingPlanRequest.Status.REJECTED
+        billing_request.reviewed_by = self.global_admin
+        billing_request.reviewed_at = timezone.now()
+        billing_request.save(update_fields=["status", "reviewed_by", "reviewed_at"])
+        self.assertEqual(BillingPlanRequest.objects.get(pk=billing_request.pk).status, BillingPlanRequest.Status.REJECTED)
+
     def test_billing_request_admin_is_read_only_global_only(self):
         model_admin = BillingPlanRequestAdmin(BillingPlanRequest, admin.site)
         self.assertFalse(model_admin.has_add_permission(self.request_for(self.global_admin)))
-        self.assertFalse(model_admin.has_change_permission(self.request_for(self.global_admin)))
+        self.assertTrue(model_admin.has_change_permission(self.request_for(self.global_admin)))
+        self.assertFalse(model_admin.has_change_permission(self.request_for(self.operator)))
         self.assertFalse(model_admin.has_module_permission(self.request_for(self.operator)))
 
     def test_billing_requests_are_documented(self):

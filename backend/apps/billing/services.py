@@ -542,7 +542,10 @@ def create_billing_plan_request(*, organization, requester, request_key, request
 @transaction.atomic
 def approve_billing_plan_request(request, *, reviewer):
     _require_global_admin(reviewer)
-    request = BillingPlanRequest.objects.select_for_update().select_related("organization", "requested_plan", "requested_module").get(pk=request.pk)
+    # Lock only the request row; nullable target relations make PostgreSQL reject
+    # SELECT ... FOR UPDATE across the outer joins created by select_related.
+    request = BillingPlanRequest.objects.select_for_update().get(pk=request.pk)
+    request = BillingPlanRequest.objects.select_related("organization", "requested_plan", "requested_module").get(pk=request.pk)
     if request.status != BillingPlanRequest.Status.OPEN:
         return request
     subscription = Subscription.objects.get(organization=request.organization)

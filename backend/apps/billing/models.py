@@ -516,6 +516,24 @@ class BillingPlanRequest(models.Model):
 
     def clean(self):
         errors = {}
+        if self.pk:
+            previous = type(self).objects.filter(pk=self.pk).values(
+                "organization_id", "requester_id", "requested_plan_id", "requested_module_id",
+                "request_key", "notes", "created_at",
+            ).first()
+            if previous:
+                immutable_fields = {
+                    "organization": ("organization_id", "A organização de uma solicitação não pode ser alterada."),
+                    "requester": ("requester_id", "O solicitante de uma solicitação não pode ser alterado."),
+                    "requested_plan": ("requested_plan_id", "O alvo de uma solicitação não pode ser alterado."),
+                    "requested_module": ("requested_module_id", "O alvo de uma solicitação não pode ser alterado."),
+                    "request_key": ("request_key", "A chave de uma solicitação não pode ser alterada."),
+                    "notes": ("notes", "As observações de uma solicitação são históricas e não podem ser alteradas."),
+                    "created_at": ("created_at", "A data de criação de uma solicitação não pode ser alterada."),
+                }
+                for field_name, (attribute, message) in immutable_fields.items():
+                    if previous[attribute] != getattr(self, attribute):
+                        errors[field_name] = message
         if not self.request_key:
             errors["request_key"] = "A chave da solicitação é obrigatória."
         if not self.requested_plan_id and not self.requested_module_id or self.requested_plan_id and self.requested_module_id:

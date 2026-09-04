@@ -1,4 +1,5 @@
 from django.contrib import admin, messages
+from django.db.models import Count, Q
 from django.utils import timezone
 from unfold.admin import ModelAdmin
 
@@ -31,30 +32,82 @@ class GlobalBillingAdminMixin:
 
 @admin.register(BillingPlanRequest)
 class BillingPlanRequestAdmin(NoDeleteAdminMixin, GlobalBillingAdminMixin, ModelAdmin):
-    list_display = ["organization", "requester", "target", "status", "request_key", "reviewed_by", "created_at"]
-    list_filter = ["status", "created_at"]
-    search_fields = ["organization__name", "requester__username", "request_key"]
+    list_display = ["organization", "organization_pending_count", "requester", "target", "status", "request_key", "reviewed_by", "created_at", "reviewed_at"]
+    list_filter = ["status", "requested_plan", "requested_module", "created_at", "reviewed_at"]
+    search_fields = [
+        "organization__name", "organization__document", "requester__username", "requester__email",
+        "request_key", "requested_plan__code", "requested_plan__name", "requested_module__code", "requested_module__name",
+    ]
+    date_hierarchy = "created_at"
+    list_per_page = 25
     readonly_fields = ["organization", "requester", "requested_plan", "requested_module", "status", "request_key", "notes", "reviewed_by", "reviewed_at", "created_at"]
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if not request.user.is_superuser:
+            actions.pop("approve_requests", None)
+            actions.pop("reject_requests", None)
+        return actions
     list_select_related = ["organization", "requester", "requested_plan", "requested_module", "reviewed_by"]
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).annotate(
+            organization_pending_count=Count(
+                "organization__billing_plan_requests",
+                filter=Q(organization__billing_plan_requests__status=BillingPlanRequest.Status.OPEN),
+                distinct=True,
+            )
+        )
+
+    @admin.display(ordering="organization_pending_count", description="pendentes na organização")
+    def organization_pending_count(self, obj):
+        return obj.organization_pending_count
 
     def target(self, obj):
         return obj.requested_plan or obj.requested_module
 
+    target.short_description = "alvo"
+
+    def _run_request_action(self, request, queryset, service, success_message, skipped_message):
+        selected = queryset.count()
+        pending = queryset.filter(status=BillingPlanRequest.Status.OPEN)
+        skipped = selected - pending.count()
+        succeeded = 0
+        failed = 0
+        for billing_request in pending:
+            try:
+                service(billing_request, reviewer=request.user)
+            except Exception as exc:
+                failed += 1
+                self.message_user(
+                    request,
+                    f"Solicitação {billing_request.request_key}: {exc}",
+                    messages.ERROR,
+                )
+            else:
+                succeeded += 1
+        if succeeded:
+            self.message_user(request, success_message.format(count=succeeded), messages.SUCCESS)
+        if skipped:
+            self.message_user(request, skipped_message.format(count=skipped), messages.WARNING)
+        if failed:
+            self.message_user(request, f"{failed} solicitação(ões) não puderam ser processadas.", messages.ERROR)
+
     @admin.action(description="Aprovar solicitações selecionadas")
     def approve_requests(self, request, queryset):
-        count = 0
-        for billing_request in queryset.filter(status=BillingPlanRequest.Status.OPEN):
-            approve_billing_plan_request(billing_request, reviewer=request.user)
-            count += 1
-        self.message_user(request, f"{count} solicitação(ões) aprovada(s).", messages.SUCCESS)
+        self._run_request_action(
+            request, queryset, approve_billing_plan_request,
+            "{count} solicitação(ões) aprovada(s).",
+            "{count} solicitação(ões) já revisada(s) foram ignorada(s).",
+        )
 
     @admin.action(description="Rejeitar solicitações selecionadas")
     def reject_requests(self, request, queryset):
-        count = 0
-        for billing_request in queryset.filter(status=BillingPlanRequest.Status.OPEN):
-            reject_billing_plan_request(billing_request, reviewer=request.user)
-            count += 1
-        self.message_user(request, f"{count} solicitação(ões) rejeitada(s).", messages.SUCCESS)
+        self._run_request_action(
+            request, queryset, reject_billing_plan_request,
+            "{count} solicitação(ões) rejeitada(s).",
+            "{count} solicitação(ões) já revisada(s) foram ignorada(s).",
+        )
 
     actions = ["approve_requests", "reject_requests"]
 
@@ -62,7 +115,8 @@ class BillingPlanRequestAdmin(NoDeleteAdminMixin, GlobalBillingAdminMixin, Model
         return False
 
     def has_change_permission(self, request, obj=None):
-        return False
+        # The form is read-only; Django still requires change permission to expose actions.
+        return super().has_change_permission(request, obj)
 
 
 @admin.register(Plan)
