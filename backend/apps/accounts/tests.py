@@ -677,6 +677,12 @@ class AdminSitePolicyTests(TestCase):
         self.assertTrue(model_admin.has_module_permission(self.request_for(superuser)))
         self.assertFalse(model_admin.has_module_permission(self.request_for(manager)))
 
+    def test_auth_events_cannot_be_deleted(self):
+        model_admin = AuthEventAdmin(AuthEvent, admin.site)
+        superuser = get_user_model().objects.create_superuser(username="root", password="test-pass")
+
+        self.assertFalse(model_admin.has_delete_permission(self.request_for(superuser)))
+
     def test_security_admin_uses_localized_readonly_labels(self):
         login_admin = LoginAttemptAdmin(LoginAttempt, admin.site)
         event_admin = AuthEventAdmin(AuthEvent, admin.site)
