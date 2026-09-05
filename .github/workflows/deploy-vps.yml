@@ -1,9 +1,11 @@
 name: Deploy VPS
 
 on:
-  push:
-    branches:
-      - main
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
   workflow_dispatch:
     inputs:
       deploy_ref:
@@ -21,6 +23,11 @@ concurrency:
 jobs:
   deploy:
     name: Deploy to VPS
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.name == 'CI' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     environment: production
 
@@ -32,7 +39,7 @@ jobs:
           VPS_SSH_KEY_B64: ${{ secrets.VPS_SSH_KEY_B64 }}
           VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
           VPS_APP_DIR: ${{ secrets.VPS_APP_DIR }}
-          DEPLOY_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_ref || github.sha }}
+          DEPLOY_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_ref || github.event.workflow_run.head_sha }}
         run: |
           set -eu
 
