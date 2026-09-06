@@ -34,6 +34,9 @@ jobs:
           test -n "$VPS_SSH_KEY_B64"
           test -n "$VPS_KNOWN_HOSTS"
           test -n "$VPS_APP_DIR"
+          case "$VPS_APP_DIR" in
+            *[!A-Za-z0-9_./-]*) echo "VPS_APP_DIR contains unsupported characters" >&2; exit 1 ;;
+          esac
 
           install -m 700 -d "$HOME/.ssh"
           install -m 600 /dev/null "$HOME/.ssh/vps_billing_key"
