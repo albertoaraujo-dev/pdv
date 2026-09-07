@@ -155,6 +155,27 @@ class SalesApiTests(TestCase):
         self.assertEqual(sale.cash_session_id, CashRegisterSession.objects.get().id)
         self.assertEqual(response.json()["cash_session"], sale.cash_session_id)
 
+    def test_cash_register_report_summarizes_sales_and_cash_movements(self):
+        session = CashRegisterSession.objects.create(
+            organization=self.first_org, store=self.first_store, opened_by=self.operator, opening_amount="50.00",
+        )
+        CashRegisterMovement.objects.create(
+            session=session, movement_type=CashRegisterMovement.MovementType.SUPPLY,
+            amount="10.00", reason="Troco", created_by=self.operator,
+        )
+        self.client.force_authenticate(self.operator)
+        sale_response = self.client.post(reverse("sale-list"), {
+            "store": self.first_store.id, "payment_method": Sale.PaymentMethod.CASH,
+            "amount_received": "5.00", "items": [{"product": self.product.id, "quantity": "1.000"}],
+        }, format="json")
+        self.assertEqual(sale_response.status_code, 201, sale_response.json())
+        response = self.client.get(reverse("cash-register-report"), {"store": self.first_store.id})
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["sales_count"], 1)
+        self.assertEqual(response.json()["completed_total"], "3.50")
+        self.assertEqual(response.json()["sales_by_payment"][Sale.PaymentMethod.CASH], "3.50")
+        self.assertEqual(response.json()["expected_cash_total"], "60.00")
+
     def test_non_cash_sale_has_no_change(self):
         self.client.force_authenticate(self.operator)
 

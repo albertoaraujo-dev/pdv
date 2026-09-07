@@ -15,6 +15,7 @@ obrigatoria para criar vendas existentes.
 - Fechamento idempotente e preservacao do historico.
 - Novas vendas registram a sessao aberta da loja quando existir.
 - Resumo do caixa inclui total vendido e totais por forma de pagamento.
+- Relatorio diario por loja com vendas, cancelamentos, pagamentos e divergencia.
 - Endpoints protegidos pela mesma politica do modulo de vendas.
 - Registros somente leitura no Admin.
 - Painel compacto integrado ao PDV para operar o caixa da loja selecionada.
@@ -26,6 +27,7 @@ obrigatoria para criar vendas existentes.
 - `GET /api/sales/cash-register/{id}/`
 - `POST /api/sales/cash-register/{id}/movements/`
 - `POST /api/sales/cash-register/{id}/close/`
+- `GET /api/sales/cash-register/report/?store={id}&date=AAAA-MM-DD`
 
 ## Interface implementada
 
@@ -38,7 +40,7 @@ obrigatoria para criar vendas existentes.
 
 - `python manage.py check`: OK.
 - `python manage.py makemigrations --check --dry-run`: OK.
-- Suite `apps.sales`: 35 testes passando.
+- Suite `apps.sales`: 36 testes passando.
 - `npm run build`: OK.
 
 ## Teste manual pendente
@@ -53,6 +55,8 @@ obrigatoria para criar vendas existentes.
 8. Confirmar que usuario sem acesso a loja nao consegue consultar a sessao.
 9. Com um caixa aberto, finalizar uma venda e confirmar que ela aparece no
    resumo do caixa e na forma de pagamento correta.
+10. Consultar o relatorio diario e confirmar totais de vendas, dinheiro esperado
+    e divergencia.
 
 Nao commitar esta fase antes da aprovacao manual dos endpoints e regras de
 abertura, movimentacao e fechamento.

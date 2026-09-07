@@ -1,5 +1,9 @@
 from django.conf import settings
+from datetime import date
+from decimal import Decimal
+
 from django.db import transaction
+from django.utils import timezone
 from django.core.exceptions import PermissionDenied, ValidationError
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
@@ -74,6 +78,51 @@ class CashRegisterViewSet(viewsets.ViewSet):
         except CashRegisterSession.DoesNotExist:
             return Response({"detail": "Sessão de caixa não encontrada."}, status=status.HTTP_404_NOT_FOUND)
         return Response(CashRegisterSessionSerializer(session).data)
+
+    @action(detail=False, methods=["get"], url_path="report")
+    def report(self, request):
+        report_date = request.query_params.get("date")
+        try:
+            selected_date = date.fromisoformat(report_date) if report_date else timezone.localdate()
+        except ValueError:
+            return Response({"date": ["Use a data no formato AAAA-MM-DD."]}, status=status.HTTP_400_BAD_REQUEST)
+        queryset = CashRegisterSession.objects.prefetch_related("movements", "sales").filter(
+            store__in=self._stores(request), opened_at__date=selected_date,
+        )
+        store_id = request.query_params.get("store")
+        if store_id:
+            queryset = queryset.filter(store_id=store_id)
+        by_payment = {}
+        completed_total = Decimal("0.00")
+        cancelled_count = 0
+        sales_count = 0
+        opening_total = Decimal("0.00")
+        supplies_total = Decimal("0.00")
+        withdrawals_total = Decimal("0.00")
+        counted_total = Decimal("0.00")
+        for session in queryset:
+            opening_total += session.opening_amount
+            supplies_total += sum((movement.amount for movement in session.movements.all() if movement.movement_type == CashRegisterMovement.MovementType.SUPPLY), Decimal("0.00"))
+            withdrawals_total += sum((movement.amount for movement in session.movements.all() if movement.movement_type == CashRegisterMovement.MovementType.WITHDRAWAL), Decimal("0.00"))
+            if session.closing_amount is not None:
+                counted_total += session.closing_amount
+            for sale in session.sales.all():
+                sales_count += 1
+                if sale.status == Sale.Status.CANCELLED:
+                    cancelled_count += 1
+                elif sale.status == Sale.Status.COMPLETED:
+                    completed_total += sale.total_amount
+                    by_payment[sale.payment_method] = str(Decimal(by_payment.get(sale.payment_method, "0.00")) + sale.total_amount)
+        expected_total = opening_total + supplies_total - withdrawals_total
+        return Response({
+            "date": selected_date.isoformat(), "store": int(store_id) if store_id else None,
+            "sessions_count": queryset.count(), "sales_count": sales_count,
+            "cancelled_count": cancelled_count, "completed_total": str(completed_total),
+            "sales_by_payment": by_payment, "opening_total": str(opening_total),
+            "supplies_total": str(supplies_total), "withdrawals_total": str(withdrawals_total),
+            "expected_cash_total": str(expected_total), "counted_cash_total": str(counted_total),
+            "variance_total": str(counted_total - expected_total),
+        })
 
     @action(detail=True, methods=["post"], url_path="movements")
     def movements(self, request, pk=None):
