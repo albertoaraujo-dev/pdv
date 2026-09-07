@@ -62,6 +62,20 @@ type AbacatePayment = {
   brCodeBase64: string
 }
 
+type CashRegister = {
+  id: number
+  store: number
+  store_name: string
+  status: 'open' | 'closed'
+  opening_amount: string
+  closing_amount: string | null
+  total_supplies: string
+  total_withdrawals: string
+  expected_cash: string
+  opened_at: string
+  closed_at: string | null
+}
+
 const paymentMethods = [
   { value: 'cash', label: 'Dinheiro' },
   { value: 'card_external', label: 'Cartão externo' },
@@ -103,6 +117,15 @@ const lastSale = ref<Sale | null>(null)
 const pixQrCode = ref('')
 const pendingSaleId = ref<number | null>(null)
 const abacatePayment = ref<AbacatePayment | null>(null)
+const cashRegister = ref<CashRegister | null>(null)
+const cashOpeningAmount = ref('')
+const cashClosingAmount = ref('')
+const cashMovementType = ref('supply')
+const cashMovementAmount = ref('')
+const cashMovementReason = ref('')
+const cashError = ref('')
+const cashMessage = ref('')
+const isCashLoading = ref(false)
 const searchInput = ref<HTMLInputElement | null>(null)
 const displayName = computed(() => user.value?.name || user.value?.username || 'Usuário')
 const storeNames = computed(() => user.value?.stores.map((store) => `${store.code} - ${store.name}`).join(', ') || 'Nenhuma loja ativa')
@@ -189,6 +212,13 @@ watch(isPdvAvailable, async (value) => {
   if (value && selectedStoreId.value) await refreshProducts()
 })
 
+watch(selectedStoreId, async (value) => {
+  cashRegister.value = null
+  cashError.value = ''
+  cashMessage.value = ''
+  if (value && isPdvAvailable.value) await loadCashRegister()
+})
+
 watch(search, (value) => {
   searchMessage.value = ''
   if (searchTimeout) {
@@ -257,6 +287,79 @@ async function logout() {
     })
   } finally {
     await navigateTo('/', { external: true })
+  }
+}
+
+async function loadCashRegister() {
+  if (!selectedStoreId.value) return
+  isCashLoading.value = true
+  cashError.value = ''
+  try {
+    const sessions = await $fetch<CashRegister[]>(`${apiBase}/api/sales/cash-register/?store=${selectedStoreId.value}`, { credentials: 'include' })
+    cashRegister.value = sessions.find((session) => session.status === 'open') || null
+  } catch (error) {
+    cashError.value = getFetchErrorMessage(error)
+  } finally {
+    isCashLoading.value = false
+  }
+}
+
+async function cashRequest(url: string, body: Record<string, unknown>) {
+  const csrf = await $fetch<{ csrfToken: string }>(`${apiBase}/api/auth/csrf/`, { credentials: 'include' })
+  return await $fetch<CashRegister>(url, {
+    method: 'POST', credentials: 'include', headers: { 'X-CSRFToken': csrf.csrfToken }, body
+  })
+}
+
+async function openCashRegister() {
+  if (!selectedStoreId.value || isCashLoading.value) return
+  isCashLoading.value = true
+  cashError.value = ''
+  try {
+    cashRegister.value = await cashRequest(`${apiBase}/api/sales/cash-register/`, {
+      store: selectedStoreId.value, opening_amount: (Number(cashOpeningAmount.value.replace(',', '.')) || 0).toFixed(2)
+    })
+    cashOpeningAmount.value = ''
+    cashMessage.value = 'Caixa aberto.'
+  } catch (error) {
+    cashError.value = getFetchErrorMessage(error)
+  } finally {
+    isCashLoading.value = false
+  }
+}
+
+async function addCashMovement() {
+  if (!cashRegister.value || isCashLoading.value) return
+  isCashLoading.value = true
+  cashError.value = ''
+  try {
+    cashRegister.value = await cashRequest(`${apiBase}/api/sales/cash-register/${cashRegister.value.id}/movements/`, {
+      movement_type: cashMovementType.value, amount: (Number(cashMovementAmount.value.replace(',', '.')) || 0).toFixed(2), reason: cashMovementReason.value
+    })
+    cashMovementAmount.value = ''
+    cashMovementReason.value = ''
+    cashMessage.value = 'Movimentação registrada.'
+  } catch (error) {
+    cashError.value = getFetchErrorMessage(error)
+  } finally {
+    isCashLoading.value = false
+  }
+}
+
+async function closeCashRegister() {
+  if (!cashRegister.value || isCashLoading.value) return
+  isCashLoading.value = true
+  cashError.value = ''
+  try {
+    cashRegister.value = await cashRequest(`${apiBase}/api/sales/cash-register/${cashRegister.value.id}/close/`, {
+      closing_amount: (Number(cashClosingAmount.value.replace(',', '.')) || 0).toFixed(2)
+    })
+    cashClosingAmount.value = ''
+    cashMessage.value = 'Caixa fechado.'
+  } catch (error) {
+    cashError.value = getFetchErrorMessage(error)
+  } finally {
+    isCashLoading.value = false
   }
 }
 
@@ -673,6 +776,56 @@ function money(value: number | string) {
     </section>
 
     <div v-else class="pos-workspace">
+      <section class="cash-card" aria-label="Caixa da loja">
+        <div class="products-heading">
+          <div>
+            <p class="eyebrow">Operação</p>
+            <h2>Caixa</h2>
+          </div>
+          <button type="button" :disabled="isCashLoading || !selectedStoreId" @click="loadCashRegister">Atualizar</button>
+        </div>
+        <p v-if="isCashLoading" class="muted">Carregando caixa...</p>
+        <template v-else-if="!cashRegister">
+          <p class="muted">Nenhum caixa aberto para esta loja.</p>
+          <div class="cash-form">
+            <label class="store-field">Valor de abertura
+              <input v-model="cashOpeningAmount" inputmode="decimal" placeholder="0,00">
+            </label>
+            <button type="button" :disabled="!selectedStoreId || isCashLoading" @click="openCashRegister">Abrir caixa</button>
+          </div>
+        </template>
+        <template v-else>
+          <div class="cash-summary">
+            <strong>Aberto</strong>
+            <span>Dinheiro esperado: <b>{{ money(cashRegister.expected_cash) }}</b></span>
+            <small>Abertura {{ money(cashRegister.opening_amount) }} · Suprimentos {{ money(cashRegister.total_supplies) }} · Sangrias {{ money(cashRegister.total_withdrawals) }}</small>
+          </div>
+          <div class="cash-form">
+            <label class="store-field">Tipo
+              <select v-model="cashMovementType">
+                <option value="supply">Suprimento</option>
+                <option value="withdrawal">Sangria</option>
+              </select>
+            </label>
+            <label class="store-field">Valor
+              <input v-model="cashMovementAmount" inputmode="decimal" placeholder="0,00">
+            </label>
+            <label class="store-field">Motivo
+              <input v-model="cashMovementReason" placeholder="Ex.: troco inicial">
+            </label>
+            <button type="button" :disabled="isCashLoading" @click="addCashMovement">Registrar</button>
+          </div>
+          <div class="cash-form cash-close-form">
+            <label class="store-field">Valor contado no fechamento
+              <input v-model="cashClosingAmount" inputmode="decimal" placeholder="0,00">
+            </label>
+            <button type="button" :disabled="isCashLoading" @click="closeCashRegister">Fechar caixa</button>
+          </div>
+        </template>
+        <p v-if="cashError" class="sale-message sale-message-error">{{ cashError }}</p>
+        <p v-if="cashMessage" class="sale-message sale-message-success">{{ cashMessage }}</p>
+      </section>
+
       <section class="products-card">
         <div class="products-heading">
           <div>
@@ -1288,6 +1441,53 @@ dd {
   font-weight: 800;
 }
 
+.cash-card {
+  display: grid;
+  gap: 16px;
+  margin: 24px 0;
+  padding: 22px;
+  border: 1px solid #bae6fd;
+  border-radius: 20px;
+  background: #f0f9ff;
+}
+
+.cash-card h2 {
+  margin: 0;
+}
+
+.cash-summary {
+  display: grid;
+  gap: 5px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: #e0f2fe;
+  color: #0c4a6e;
+}
+
+.cash-summary strong {
+  color: #166534;
+}
+
+.cash-summary small {
+  color: #0369a1;
+}
+
+.cash-form {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.cash-form .store-field {
+  flex: 1 1 150px;
+}
+
+.cash-close-form {
+  padding-top: 14px;
+  border-top: 1px solid #bae6fd;
+}
+
 @media (min-width: 1100px) {
   .status-card {
     max-width: 820px;
@@ -1310,6 +1510,11 @@ dd {
 
   .pos-header {
     display: grid;
+  }
+
+  .cash-form {
+    align-items: stretch;
+    flex-direction: column;
   }
 
 }

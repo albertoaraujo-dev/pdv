@@ -15,6 +15,7 @@ obrigatoria para criar vendas existentes.
 - Fechamento idempotente e preservacao do historico.
 - Endpoints protegidos pela mesma politica do modulo de vendas.
 - Registros somente leitura no Admin.
+- Painel compacto integrado ao PDV para operar o caixa da loja selecionada.
 
 ## Endpoints
 
@@ -24,11 +25,19 @@ obrigatoria para criar vendas existentes.
 - `POST /api/sales/cash-register/{id}/movements/`
 - `POST /api/sales/cash-register/{id}/close/`
 
+## Interface implementada
+
+- Abertura diretamente na tela do PDV.
+- Consulta do valor esperado e dos totais de suprimento/sangria.
+- Registro de movimentacoes.
+- Fechamento diretamente na tela do PDV.
+
 ## Validacoes automaticas realizadas
 
 - `python manage.py check`: OK.
 - `python manage.py makemigrations --check --dry-run`: OK.
 - Suite `apps.sales`: 34 testes passando.
+- `npm run build`: OK.
 
 ## Teste manual pendente
 
