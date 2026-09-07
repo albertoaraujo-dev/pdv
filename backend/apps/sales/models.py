@@ -190,3 +190,73 @@ class CardPaymentTransaction(models.Model):
 
     def __str__(self):
         return f"Cartão externo #{self.external_id}"
+
+
+class CashRegisterSession(models.Model):
+    class Status(models.TextChoices):
+        OPEN = "open", "Aberto"
+        CLOSED = "closed", "Fechado"
+
+    organization = models.ForeignKey(Organization, on_delete=models.PROTECT, related_name="cash_register_sessions", verbose_name="organização")
+    store = models.ForeignKey(Store, on_delete=models.PROTECT, related_name="cash_register_sessions", verbose_name="loja")
+    opened_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="opened_cash_register_sessions", verbose_name="aberto por")
+    closed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="closed_cash_register_sessions", verbose_name="fechado por")
+    status = models.CharField("status", max_length=12, choices=Status.choices, default=Status.OPEN)
+    opening_amount = models.DecimalField("valor de abertura", max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    closing_amount = models.DecimalField("valor de fechamento", max_digits=12, decimal_places=2, null=True, blank=True)
+    closing_note = models.CharField("observação do fechamento", max_length=240, blank=True)
+    opened_at = models.DateTimeField("aberto em", auto_now_add=True)
+    closed_at = models.DateTimeField("fechado em", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "sessão de caixa"
+        verbose_name_plural = "sessões de caixa"
+        ordering = ["-opened_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["store"], condition=Q(status="open"), name="unique_open_cash_session_per_store"
+            ),
+            models.CheckConstraint(check=Q(opening_amount__gte=0), name="cash_session_opening_amount_nonnegative"),
+            models.CheckConstraint(check=Q(closing_amount__gte=0) | Q(closing_amount__isnull=True), name="cash_session_closing_amount_nonnegative"),
+        ]
+        indexes = [models.Index(fields=["organization", "store", "status", "opened_at"])]
+
+    def clean(self):
+        if self.store_id and self.organization_id and self.store.organization_id != self.organization_id:
+            raise ValidationError({"store": "A loja precisa pertencer à mesma organização do caixa."})
+        if self.status == self.Status.CLOSED and self.closing_amount is None:
+            raise ValidationError({"closing_amount": "Informe o valor contado no fechamento."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"Caixa {self.store} #{self.pk or 'novo'}"
+
+
+class CashRegisterMovement(models.Model):
+    class MovementType(models.TextChoices):
+        SUPPLY = "supply", "Suprimento"
+        WITHDRAWAL = "withdrawal", "Sangria"
+
+    session = models.ForeignKey(CashRegisterSession, on_delete=models.PROTECT, related_name="movements", verbose_name="sessão")
+    movement_type = models.CharField("tipo", max_length=16, choices=MovementType.choices)
+    amount = models.DecimalField("valor", max_digits=12, decimal_places=2)
+    reason = models.CharField("motivo", max_length=240)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="cash_register_movements", verbose_name="registrado por")
+    created_at = models.DateTimeField("criado em", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "movimentação de caixa"
+        verbose_name_plural = "movimentações de caixa"
+        ordering = ["created_at", "id"]
+        constraints = [models.CheckConstraint(check=Q(amount__gt=0), name="cash_movement_amount_positive")]
+
+    def clean(self):
+        if self.session_id and self.session.status != CashRegisterSession.Status.OPEN:
+            raise ValidationError("Só é possível movimentar um caixa aberto.")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)

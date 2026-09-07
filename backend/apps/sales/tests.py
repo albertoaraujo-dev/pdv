@@ -20,7 +20,7 @@ from apps.inventory.services import reserve_stock_for_sale
 from apps.billing.models import Module, Plan, PlanModule, Subscription
 
 from .abacatepay import AbacatePayError
-from .models import CardPaymentTransaction, Sale, SaleItem, SalePayment
+from .models import CardPaymentTransaction, CashRegisterMovement, CashRegisterSession, Sale, SaleItem, SalePayment
 from .services import apply_payment_status
 
 
@@ -58,6 +58,53 @@ class SalesApiTests(TestCase):
 
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.json()["code"], "not_authenticated")
+
+    def test_operator_can_open_move_and_close_cash_register_for_allowed_store(self):
+        self.client.force_authenticate(self.operator)
+        open_response = self.client.post(reverse("cash-register-list"), {
+            "store": self.first_store.id, "opening_amount": "100.00",
+        }, format="json")
+        self.assertEqual(open_response.status_code, 201, open_response.json())
+        session = CashRegisterSession.objects.get()
+        self.assertEqual(open_response.json()["expected_cash"], "100.00")
+
+        movement_response = self.client.post(reverse("cash-register-movements", kwargs={"pk": session.pk}), {
+            "movement_type": CashRegisterMovement.MovementType.SUPPLY, "amount": "25.00", "reason": "Troco inicial",
+        }, format="json")
+        self.assertEqual(movement_response.status_code, 201, movement_response.json())
+        self.assertEqual(movement_response.json()["expected_cash"], "125.00")
+
+        close_response = self.client.post(reverse("cash-register-close", kwargs={"pk": session.pk}), {
+            "closing_amount": "125.00", "closing_note": "Fechamento conferido",
+        }, format="json")
+        self.assertEqual(close_response.status_code, 200, close_response.json())
+        session.refresh_from_db()
+        self.assertEqual(session.status, CashRegisterSession.Status.CLOSED)
+        self.assertEqual(session.closed_by, self.operator)
+
+    def test_cash_register_is_tenant_and_store_scoped(self):
+        session = CashRegisterSession.objects.create(
+            organization=self.second_org, store=self.second_store, opened_by=self.operator, opening_amount="10.00",
+        )
+        self.client.force_authenticate(self.operator)
+        response = self.client.get(reverse("cash-register-detail", kwargs={"pk": session.pk}))
+        self.assertEqual(response.status_code, 404)
+
+    def test_cash_register_rejects_second_open_session_and_negative_movement(self):
+        self.client.force_authenticate(self.operator)
+        first = self.client.post(reverse("cash-register-list"), {
+            "store": self.first_store.id, "opening_amount": "0.00",
+        }, format="json")
+        self.assertEqual(first.status_code, 201, first.json())
+        second = self.client.post(reverse("cash-register-list"), {
+            "store": self.first_store.id, "opening_amount": "10.00",
+        }, format="json")
+        self.assertEqual(second.status_code, 409, second.json())
+        session = CashRegisterSession.objects.get()
+        movement = self.client.post(reverse("cash-register-movements", kwargs={"pk": session.pk}), {
+            "movement_type": CashRegisterMovement.MovementType.WITHDRAWAL, "amount": "0.00", "reason": "Inválido",
+        }, format="json")
+        self.assertEqual(movement.status_code, 400, movement.json())
 
     def test_operator_can_create_sale_for_allowed_store(self):
         self.client.force_authenticate(self.operator)

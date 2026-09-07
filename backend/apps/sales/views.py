@@ -9,10 +9,10 @@ from apps.accounts.policies import can_access_admin, can_access_pos, get_allowed
 from apps.billing.services import require_module
 
 from .abacatepay import AbacatePayError, create_transparent, get_transparent, simulate_transparent
-from .models import CardPaymentTransaction, Sale, SalePayment
+from .models import CardPaymentTransaction, CashRegisterMovement, CashRegisterSession, Sale, SalePayment
 from .services import apply_payment_status
 from .payment_serializers import SalePaymentSerializer
-from .serializers import CardPaymentTransactionSerializer, SaleCreateSerializer, SaleSerializer
+from .serializers import CardPaymentTransactionSerializer, CashRegisterMovementCreateSerializer, CashRegisterOpenSerializer, CashRegisterSessionSerializer, SaleCreateSerializer, SaleSerializer
 from apps.inventory.services import reverse_stock_for_sale
 
 
@@ -28,6 +28,92 @@ class CanUseSalesApi(permissions.BasePermission):
         except PermissionDenied:
             return False
         return True
+
+
+class CashRegisterViewSet(viewsets.ViewSet):
+    permission_classes = [CanUseSalesApi]
+
+    def _stores(self, request):
+        return get_allowed_stores(request.user)
+
+    def _session(self, request, pk):
+        queryset = CashRegisterSession.objects.prefetch_related("movements").select_related("store", "opened_by")
+        if request.user.is_superuser:
+            return queryset.get(pk=pk)
+        return queryset.get(pk=pk, organization=get_user_organization(request.user), store__in=self._stores(request))
+
+    def list(self, request):
+        queryset = CashRegisterSession.objects.prefetch_related("movements").select_related("store", "opened_by")
+        if request.user.is_superuser:
+            queryset = queryset.all()
+        else:
+            queryset = queryset.filter(organization=get_user_organization(request.user), store__in=self._stores(request))
+        store_id = request.query_params.get("store")
+        if store_id:
+            queryset = queryset.filter(store_id=store_id)
+        return Response(CashRegisterSessionSerializer(queryset[:20], many=True).data)
+
+    def create(self, request):
+        serializer = CashRegisterOpenSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        store = self._stores(request).filter(pk=serializer.validated_data["store"]).first()
+        if not store:
+            return Response({"detail": "Loja não permitida para este usuário."}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            session = CashRegisterSession.objects.create(
+                organization=store.organization, store=store, opened_by=request.user,
+                opening_amount=serializer.validated_data["opening_amount"],
+            )
+        except ValidationError as exc:
+            return Response({"detail": exc.message_dict if hasattr(exc, "message_dict") else exc.messages}, status=status.HTTP_409_CONFLICT)
+        return Response(CashRegisterSessionSerializer(session).data, status=status.HTTP_201_CREATED)
+
+    def retrieve(self, request, pk=None):
+        try:
+            session = self._session(request, pk)
+        except CashRegisterSession.DoesNotExist:
+            return Response({"detail": "Sessão de caixa não encontrada."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(CashRegisterSessionSerializer(session).data)
+
+    @action(detail=True, methods=["post"], url_path="movements")
+    def movements(self, request, pk=None):
+        try:
+            session = self._session(request, pk)
+        except CashRegisterSession.DoesNotExist:
+            return Response({"detail": "Sessão de caixa não encontrada."}, status=status.HTTP_404_NOT_FOUND)
+        if session.status != CashRegisterSession.Status.OPEN:
+            return Response({"detail": "O caixa já está fechado."}, status=status.HTTP_409_CONFLICT)
+        serializer = CashRegisterMovementCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            movement = CashRegisterMovement.objects.create(session=session, created_by=request.user, **serializer.validated_data)
+        except ValidationError as exc:
+            return Response({"detail": exc.message_dict if hasattr(exc, "message_dict") else exc.messages}, status=status.HTTP_400_BAD_REQUEST)
+        session = self._session(request, session.pk)
+        return Response(CashRegisterSessionSerializer(session).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"], url_path="close")
+    def close(self, request, pk=None):
+        try:
+            session = self._session(request, pk)
+        except CashRegisterSession.DoesNotExist:
+            return Response({"detail": "Sessão de caixa não encontrada."}, status=status.HTTP_404_NOT_FOUND)
+        if session.status != CashRegisterSession.Status.OPEN:
+            return Response(CashRegisterSessionSerializer(session).data)
+        closing_amount = request.data.get("closing_amount")
+        if closing_amount in (None, ""):
+            return Response({"closing_amount": ["Informe o valor contado no fechamento."]}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            session.closing_amount = closing_amount
+            session.closing_note = str(request.data.get("closing_note", "")).strip()
+            session.status = CashRegisterSession.Status.CLOSED
+            session.closed_by = request.user
+            from django.utils import timezone
+            session.closed_at = timezone.now()
+            session.save()
+        except ValidationError as exc:
+            return Response({"detail": exc.message_dict if hasattr(exc, "message_dict") else exc.messages}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(CashRegisterSessionSerializer(session).data)
 
 
 class SaleViewSet(viewsets.ModelViewSet):

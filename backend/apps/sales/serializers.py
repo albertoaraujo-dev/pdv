@@ -7,7 +7,7 @@ from apps.accounts.policies import get_allowed_stores
 from apps.catalog.models import Product
 from apps.inventory.services import InsufficientStockError, deduct_stock_for_sale, reserve_stock_for_sale
 
-from .models import CardPaymentTransaction, Sale, SaleItem
+from .models import CardPaymentTransaction, CashRegisterMovement, CashRegisterSession, Sale, SaleItem
 
 
 MONEY_QUANT = Decimal("0.01")
@@ -174,3 +174,56 @@ def _ensure_card_transaction(sale):
     if transaction.amount_cents != int(sale.total_amount * 100):
         raise serializers.ValidationError({"amount_received": "O valor da transação não corresponde ao total da venda."})
     return transaction
+
+
+class CashRegisterMovementSerializer(serializers.ModelSerializer):
+    movement_type_label = serializers.CharField(source="get_movement_type_display", read_only=True)
+    created_by_username = serializers.CharField(source="created_by.username", read_only=True)
+
+    class Meta:
+        model = CashRegisterMovement
+        fields = ["id", "movement_type", "movement_type_label", "amount", "reason", "created_by_username", "created_at"]
+        read_only_fields = ["id", "movement_type_label", "created_by_username", "created_at"]
+
+
+class CashRegisterSessionSerializer(serializers.ModelSerializer):
+    status_label = serializers.CharField(source="get_status_display", read_only=True)
+    store_name = serializers.CharField(source="store.name", read_only=True)
+    opened_by_username = serializers.CharField(source="opened_by.username", read_only=True)
+    movements = CashRegisterMovementSerializer(many=True, read_only=True)
+    total_supplies = serializers.SerializerMethodField()
+    total_withdrawals = serializers.SerializerMethodField()
+    expected_cash = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CashRegisterSession
+        fields = ["id", "store", "store_name", "status", "status_label", "opening_amount", "closing_amount", "closing_note", "opened_by_username", "opened_at", "closed_at", "movements", "total_supplies", "total_withdrawals", "expected_cash"]
+        read_only_fields = ["id", "status", "status_label", "store_name", "closing_amount", "opened_by_username", "opened_at", "closed_at", "movements", "total_supplies", "total_withdrawals", "expected_cash"]
+
+    def _total(self, obj, movement_type):
+        return sum((movement.amount for movement in obj.movements.all() if movement.movement_type == movement_type), Decimal("0.00"))
+
+    def get_total_supplies(self, obj):
+        return str(self._total(obj, CashRegisterMovement.MovementType.SUPPLY))
+
+    def get_total_withdrawals(self, obj):
+        return str(self._total(obj, CashRegisterMovement.MovementType.WITHDRAWAL))
+
+    def get_expected_cash(self, obj):
+        return str(obj.opening_amount + self._total(obj, CashRegisterMovement.MovementType.SUPPLY) - self._total(obj, CashRegisterMovement.MovementType.WITHDRAWAL))
+
+
+class CashRegisterOpenSerializer(serializers.Serializer):
+    store = serializers.IntegerField()
+    opening_amount = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal("0.00"))
+
+
+class CashRegisterMovementCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CashRegisterMovement
+        fields = ["movement_type", "amount", "reason"]
+
+    def validate_reason(self, value):
+        if not value.strip():
+            raise serializers.ValidationError("Informe o motivo da movimentação.")
+        return value.strip()

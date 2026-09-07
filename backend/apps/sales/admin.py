@@ -3,7 +3,7 @@ from unfold.admin import ModelAdmin, TabularInline
 
 from apps.accounts.policies import can_access_admin, get_allowed_stores, get_user_organization
 
-from .models import CardPaymentTransaction, Sale, SaleItem
+from .models import CardPaymentTransaction, CashRegisterMovement, CashRegisterSession, Sale, SaleItem
 
 
 class SaleItemInline(TabularInline):
@@ -108,6 +108,52 @@ class CardPaymentTransactionAdmin(ModelAdmin):
         return can_access_admin(request.user) and (obj is None or self.get_queryset(request).filter(pk=obj.pk).exists())
 
     def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+
+@admin.register(CashRegisterSession)
+class CashRegisterSessionAdmin(ModelAdmin):
+    list_display = ["id", "store", "status", "opening_amount", "closing_amount", "opened_by", "opened_at", "closed_at"]
+    list_filter = ["status", "store", "opened_at"]
+    readonly_fields = [field.name for field in CashRegisterSession._meta.fields]
+    search_fields = ["store__name", "opened_by__username", "closed_by__username"]
+
+    def has_module_permission(self, request):
+        return can_access_admin(request.user)
+
+    def has_view_permission(self, request, obj=None):
+        return can_access_admin(request.user)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+
+@admin.register(CashRegisterMovement)
+class CashRegisterMovementAdmin(ModelAdmin):
+    list_display = ["id", "session", "movement_type", "amount", "created_by", "created_at"]
+    list_filter = ["movement_type", "created_at"]
+    readonly_fields = [field.name for field in CashRegisterMovement._meta.fields]
+    search_fields = ["reason", "created_by__username", "session__store__name"]
+
+    def has_module_permission(self, request):
+        return can_access_admin(request.user)
+
+    def has_view_permission(self, request, obj=None):
+        return can_access_admin(request.user)
+
+    def has_add_permission(self, request):
         return False
 
     def has_change_permission(self, request, obj=None):
