@@ -25,6 +25,7 @@ class Sale(models.Model):
     organization = models.ForeignKey(Organization, on_delete=models.PROTECT, related_name="sales", verbose_name="organização")
     store = models.ForeignKey(Store, on_delete=models.PROTECT, related_name="sales", verbose_name="loja")
     cashier = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="sales", verbose_name="operador")
+    cash_session = models.ForeignKey("CashRegisterSession", on_delete=models.PROTECT, null=True, blank=True, related_name="sales", verbose_name="sessão de caixa")
     status = models.CharField("status", max_length=24, choices=Status.choices, default=Status.COMPLETED)
     total_amount = models.DecimalField("total", max_digits=12, decimal_places=2, default=Decimal("0.00"))
     payment_method = models.CharField("forma de pagamento", max_length=24, choices=PaymentMethod.choices, default=PaymentMethod.CASH)
@@ -51,8 +52,13 @@ class Sale(models.Model):
         ]
 
     def clean(self):
+        errors = {}
         if self.store_id and self.organization_id and self.store.organization_id != self.organization_id:
-            raise ValidationError({"store": "A loja precisa pertencer à mesma organização da venda."})
+            errors["store"] = "A loja precisa pertencer à mesma organização da venda."
+        if self.cash_session_id and (self.cash_session.store_id != self.store_id or self.cash_session.organization_id != self.organization_id):
+            errors["cash_session"] = "A sessão de caixa precisa pertencer à mesma organização e loja da venda."
+        if errors:
+            raise ValidationError(errors)
 
     def save(self, *args, **kwargs):
         self.full_clean()

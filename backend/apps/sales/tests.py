@@ -141,6 +141,20 @@ class SalesApiTests(TestCase):
         self.assertEqual(response.json()["payment_method_label"], "Dinheiro")
         self.assertEqual(response.json()["change_amount"], "8.00")
 
+    def test_sale_uses_open_cash_register_session_when_available(self):
+        CashRegisterSession.objects.create(
+            organization=self.first_org, store=self.first_store, opened_by=self.operator, opening_amount="50.00",
+        )
+        self.client.force_authenticate(self.operator)
+        response = self.client.post(reverse("sale-list"), {
+            "store": self.first_store.id, "payment_method": Sale.PaymentMethod.CASH,
+            "amount_received": "3.50", "items": [{"product": self.product.id, "quantity": "1.000"}],
+        }, format="json")
+        self.assertEqual(response.status_code, 201, response.json())
+        sale = Sale.objects.get()
+        self.assertEqual(sale.cash_session_id, CashRegisterSession.objects.get().id)
+        self.assertEqual(response.json()["cash_session"], sale.cash_session_id)
+
     def test_non_cash_sale_has_no_change(self):
         self.client.force_authenticate(self.operator)
 

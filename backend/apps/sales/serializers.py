@@ -42,6 +42,7 @@ class SaleSerializer(serializers.ModelSerializer):
             "organization",
             "store",
             "cashier",
+            "cash_session",
             "status",
             "total_amount",
             "payment_method",
@@ -52,7 +53,7 @@ class SaleSerializer(serializers.ModelSerializer):
             "items",
             "created_at",
         ]
-        read_only_fields = ["organization", "cashier", "status", "total_amount", "payment_method_label", "amount_received", "change_amount", "client_request_id", "created_at"]
+        read_only_fields = ["organization", "cashier", "cash_session", "status", "total_amount", "payment_method_label", "amount_received", "change_amount", "client_request_id", "created_at"]
 
 
 class CardPaymentTransactionSerializer(serializers.ModelSerializer):
@@ -110,6 +111,9 @@ class SaleCreateSerializer(serializers.ModelSerializer):
         amount_received = validated_data["amount_received"]
         payment_method = validated_data.get("payment_method", Sale.PaymentMethod.CASH)
         client_request_id = validated_data.get("client_request_id")
+        cash_session = CashRegisterSession.objects.filter(
+            organization=store.organization, store=store, status=CashRegisterSession.Status.OPEN,
+        ).first()
         if client_request_id:
             existing_sale = Sale.objects.filter(cashier=request.user, store=store, client_request_id=client_request_id).first()
             if existing_sale:
@@ -120,6 +124,7 @@ class SaleCreateSerializer(serializers.ModelSerializer):
             organization=store.organization,
             store=store,
             cashier=request.user,
+            cash_session=cash_session,
             status=Sale.Status.PENDING_PAYMENT if payment_method == Sale.PaymentMethod.PIX_ABACATEPAY else Sale.Status.COMPLETED,
             payment_method=payment_method,
             amount_received=amount_received,
@@ -194,11 +199,13 @@ class CashRegisterSessionSerializer(serializers.ModelSerializer):
     total_supplies = serializers.SerializerMethodField()
     total_withdrawals = serializers.SerializerMethodField()
     expected_cash = serializers.SerializerMethodField()
+    sales_total = serializers.SerializerMethodField()
+    sales_by_payment = serializers.SerializerMethodField()
 
     class Meta:
         model = CashRegisterSession
-        fields = ["id", "store", "store_name", "status", "status_label", "opening_amount", "closing_amount", "closing_note", "opened_by_username", "opened_at", "closed_at", "movements", "total_supplies", "total_withdrawals", "expected_cash"]
-        read_only_fields = ["id", "status", "status_label", "store_name", "closing_amount", "opened_by_username", "opened_at", "closed_at", "movements", "total_supplies", "total_withdrawals", "expected_cash"]
+        fields = ["id", "store", "store_name", "status", "status_label", "opening_amount", "closing_amount", "closing_note", "opened_by_username", "opened_at", "closed_at", "movements", "total_supplies", "total_withdrawals", "expected_cash", "sales_total", "sales_by_payment"]
+        read_only_fields = ["id", "status", "status_label", "store_name", "closing_amount", "opened_by_username", "opened_at", "closed_at", "movements", "total_supplies", "total_withdrawals", "expected_cash", "sales_total", "sales_by_payment"]
 
     def _total(self, obj, movement_type):
         return sum((movement.amount for movement in obj.movements.all() if movement.movement_type == movement_type), Decimal("0.00"))
@@ -211,6 +218,16 @@ class CashRegisterSessionSerializer(serializers.ModelSerializer):
 
     def get_expected_cash(self, obj):
         return str(obj.opening_amount + self._total(obj, CashRegisterMovement.MovementType.SUPPLY) - self._total(obj, CashRegisterMovement.MovementType.WITHDRAWAL))
+
+    def get_sales_total(self, obj):
+        total = sum((sale.total_amount for sale in obj.sales.filter(status=Sale.Status.COMPLETED)), Decimal("0.00"))
+        return str(total)
+
+    def get_sales_by_payment(self, obj):
+        totals = {}
+        for sale in obj.sales.filter(status=Sale.Status.COMPLETED):
+            totals[sale.payment_method] = str(Decimal(totals.get(sale.payment_method, "0.00")) + sale.total_amount)
+        return totals
 
 
 class CashRegisterOpenSerializer(serializers.Serializer):

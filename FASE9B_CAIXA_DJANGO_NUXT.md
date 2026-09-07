@@ -13,6 +13,8 @@ obrigatoria para criar vendas existentes.
 - Suprimento e sangria com valor positivo e motivo obrigatorio.
 - Resumo de suprimentos, sangrias e dinheiro esperado.
 - Fechamento idempotente e preservacao do historico.
+- Novas vendas registram a sessao aberta da loja quando existir.
+- Resumo do caixa inclui total vendido e totais por forma de pagamento.
 - Endpoints protegidos pela mesma politica do modulo de vendas.
 - Registros somente leitura no Admin.
 - Painel compacto integrado ao PDV para operar o caixa da loja selecionada.
@@ -36,7 +38,7 @@ obrigatoria para criar vendas existentes.
 
 - `python manage.py check`: OK.
 - `python manage.py makemigrations --check --dry-run`: OK.
-- Suite `apps.sales`: 34 testes passando.
+- Suite `apps.sales`: 35 testes passando.
 - `npm run build`: OK.
 
 ## Teste manual pendente
@@ -49,6 +51,8 @@ obrigatoria para criar vendas existentes.
 6. Fechar o caixa informando o valor contado.
 7. Confirmar que uma segunda abertura para a mesma loja e rejeitada.
 8. Confirmar que usuario sem acesso a loja nao consegue consultar a sessao.
+9. Com um caixa aberto, finalizar uma venda e confirmar que ela aparece no
+   resumo do caixa e na forma de pagamento correta.
 
 Nao commitar esta fase antes da aprovacao manual dos endpoints e regras de
 abertura, movimentacao e fechamento.
