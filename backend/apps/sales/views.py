@@ -2,7 +2,7 @@ from django.conf import settings
 from datetime import date
 from decimal import Decimal
 
-from django.db import transaction
+from django.db import models, transaction
 from django.utils import timezone
 from django.core.exceptions import PermissionDenied, ValidationError
 from rest_framework import permissions, status, viewsets
@@ -13,10 +13,10 @@ from apps.accounts.policies import can_access_admin, can_access_pos, get_allowed
 from apps.billing.services import require_module
 
 from .abacatepay import AbacatePayError, create_transparent, get_transparent, simulate_transparent
-from .models import CardPaymentTransaction, CashRegisterMovement, CashRegisterSession, Sale, SalePayment
+from .models import CardPaymentTransaction, CashRegisterMovement, CashRegisterSession, Customer, Sale, SalePayment
 from .services import apply_payment_status
 from .payment_serializers import SalePaymentSerializer
-from .serializers import CardPaymentTransactionSerializer, CashRegisterMovementCreateSerializer, CashRegisterOpenSerializer, CashRegisterSessionSerializer, SaleCreateSerializer, SaleSerializer
+from .serializers import CardPaymentTransactionSerializer, CashRegisterMovementCreateSerializer, CashRegisterOpenSerializer, CashRegisterSessionSerializer, CustomerSerializer, SaleCreateSerializer, SaleSerializer
 from apps.inventory.services import reverse_stock_for_sale
 
 
@@ -177,6 +177,27 @@ class CashRegisterViewSet(viewsets.ViewSet):
         except ValidationError as exc:
             return Response({"detail": exc.message_dict if hasattr(exc, "message_dict") else exc.messages}, status=status.HTTP_400_BAD_REQUEST)
         return Response(CashRegisterSessionSerializer(session).data)
+
+
+class CustomerViewSet(viewsets.ModelViewSet):
+    permission_classes = [CanUseSalesApi]
+    serializer_class = CustomerSerializer
+    http_method_names = ["get", "post", "patch", "head", "options"]
+
+    def get_queryset(self):
+        queryset = Customer.objects.filter(is_active=True).annotate(sales_count=models.Count("sales")).order_by("name", "id")
+        user = self.request.user
+        if user.is_superuser:
+            return queryset
+        organization = get_user_organization(user)
+        queryset = queryset.filter(organization=organization) if organization else queryset.none()
+        query = self.request.query_params.get("q", "").strip()
+        if query:
+            queryset = queryset.filter(models.Q(name__icontains=query) | models.Q(phone__icontains=query) | models.Q(document__icontains=query))
+        return queryset
+
+    def perform_create(self, serializer):
+        serializer.save(organization=get_user_organization(self.request.user))
 
 
 class SaleViewSet(viewsets.ModelViewSet):

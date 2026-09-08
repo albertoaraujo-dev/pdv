@@ -25,6 +25,8 @@ type Product = {
   stock_quantity: string | null
 }
 
+type Customer = { id: number, name: string, phone: string, document: string, sales_count: number }
+
 type PaginatedResponse<T> = {
   count: number
   next: string | null
@@ -110,6 +112,8 @@ const cartItems = ref<CartItem[]>([])
 const selectedStoreId = ref<number | null>(null)
 const paymentMethod = ref('cash')
 const amountReceived = ref('')
+const customerSearch = ref('')
+const selectedCustomerId = ref<number | null>(null)
 const saleError = ref('')
 const saleSuccess = ref('')
 const searchMessage = ref('')
@@ -166,12 +170,16 @@ const productUrl = computed(() => {
   const query = params.toString()
   return `${apiBase}/api/catalog/products/${query ? `?${query}` : ''}`
 })
+const customerUrl = computed(() => `${apiBase}/api/sales/customers/${customerSearch.value ? `?q=${encodeURIComponent(customerSearch.value)}` : ''}`)
 
 const { data: products, pending: isLoadingProducts, error: productsError, refresh: refreshProducts } = await useFetch<PaginatedResponse<Product>>(productUrl, {
   credentials: 'include',
   server: false,
   immediate: false,
   watch: false
+})
+const { data: customers, pending: isLoadingCustomers, refresh: refreshCustomers } = await useFetch<PaginatedResponse<Customer>>(customerUrl, {
+  credentials: 'include', server: false, immediate: false, watch: false
 })
 
 let searchTimeout: ReturnType<typeof setTimeout> | undefined
@@ -217,6 +225,11 @@ watch(selectedStoreId, async (value) => {
   cashError.value = ''
   cashMessage.value = ''
   if (value && isPdvAvailable.value) await loadCashRegister()
+  if (value && isPdvAvailable.value) await refreshCustomers()
+})
+
+watch(customerSearch, async () => {
+  if (isPdvAvailable.value) await refreshCustomers()
 })
 
 watch(search, (value) => {
@@ -610,10 +623,11 @@ async function closeSale() {
           'X-CSRFToken': csrf.csrfToken
         },
         body: {
-          store: selectedStoreId.value,
-          payment_method: paymentMethod.value,
-          amount_received: amountToSend.value.toFixed(2),
-          client_request_id: clientRequestId,
+           store: selectedStoreId.value,
+           payment_method: paymentMethod.value,
+           amount_received: amountToSend.value.toFixed(2),
+           customer: selectedCustomerId.value,
+           client_request_id: clientRequestId,
           items: cartItems.value.map((item) => ({
             product: item.product.id,
             quantity: item.quantity.toFixed(3)
@@ -705,6 +719,8 @@ function resetSaleState() {
   amountReceived.value = ''
   pendingSaleId.value = null
   abacatePayment.value = null
+  selectedCustomerId.value = null
+  customerSearch.value = ''
   paymentMethod.value = 'cash'
 }
 
@@ -897,6 +913,17 @@ function money(value: number | string) {
       </div>
 
       <div class="payment-box">
+        <label class="store-field">
+          Cliente (opcional)
+          <input v-model="customerSearch" :disabled="cartLocked" placeholder="Buscar por nome, telefone ou documento">
+        </label>
+        <select v-if="customerSearch && customers?.results.length" v-model.number="selectedCustomerId" :disabled="cartLocked" aria-label="Cliente encontrado">
+          <option :value="null">Venda sem cliente</option>
+          <option v-for="customer in customers.results" :key="customer.id" :value="customer.id">
+            {{ customer.name }}{{ customer.phone ? ` - ${customer.phone}` : '' }}
+          </option>
+        </select>
+        <small v-if="isLoadingCustomers" class="muted">Buscando clientes...</small>
         <label class="store-field">
           Forma de pagamento
           <select v-model="paymentMethod" :disabled="cartLocked">

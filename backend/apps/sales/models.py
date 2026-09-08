@@ -9,6 +9,27 @@ from apps.catalog.models import Product
 from apps.tenants.models import Organization, Store
 
 
+class Customer(models.Model):
+    organization = models.ForeignKey(Organization, on_delete=models.PROTECT, related_name="customers", verbose_name="organização")
+    name = models.CharField("nome", max_length=180)
+    phone = models.CharField("telefone", max_length=32, blank=True)
+    email = models.EmailField("e-mail", blank=True)
+    document = models.CharField("documento", max_length=32, blank=True)
+    is_active = models.BooleanField("ativo", default=True)
+    created_at = models.DateTimeField("criado em", auto_now_add=True)
+    updated_at = models.DateTimeField("atualizado em", auto_now=True)
+
+    class Meta:
+        verbose_name = "cliente"
+        verbose_name_plural = "clientes"
+        ordering = ["name"]
+        constraints = [models.UniqueConstraint(fields=["organization", "document"], condition=Q(document__gt=""), name="unique_customer_document_per_org")]
+        indexes = [models.Index(fields=["organization", "is_active", "name"]), models.Index(fields=["organization", "phone"])]
+
+    def __str__(self):
+        return self.name
+
+
 class Sale(models.Model):
     class Status(models.TextChoices):
         COMPLETED = "completed", "Concluída"
@@ -26,6 +47,7 @@ class Sale(models.Model):
     store = models.ForeignKey(Store, on_delete=models.PROTECT, related_name="sales", verbose_name="loja")
     cashier = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="sales", verbose_name="operador")
     cash_session = models.ForeignKey("CashRegisterSession", on_delete=models.PROTECT, null=True, blank=True, related_name="sales", verbose_name="sessão de caixa")
+    customer = models.ForeignKey(Customer, on_delete=models.PROTECT, null=True, blank=True, related_name="sales", verbose_name="cliente")
     status = models.CharField("status", max_length=24, choices=Status.choices, default=Status.COMPLETED)
     total_amount = models.DecimalField("total", max_digits=12, decimal_places=2, default=Decimal("0.00"))
     payment_method = models.CharField("forma de pagamento", max_length=24, choices=PaymentMethod.choices, default=PaymentMethod.CASH)
@@ -57,6 +79,8 @@ class Sale(models.Model):
             errors["store"] = "A loja precisa pertencer à mesma organização da venda."
         if self.cash_session_id and (self.cash_session.store_id != self.store_id or self.cash_session.organization_id != self.organization_id):
             errors["cash_session"] = "A sessão de caixa precisa pertencer à mesma organização e loja da venda."
+        if self.customer_id and self.customer.organization_id != self.organization_id:
+            errors["customer"] = "O cliente precisa pertencer à mesma organização da venda."
         if errors:
             raise ValidationError(errors)
 

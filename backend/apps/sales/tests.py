@@ -20,7 +20,7 @@ from apps.inventory.services import reserve_stock_for_sale
 from apps.billing.models import Module, Plan, PlanModule, Subscription
 
 from .abacatepay import AbacatePayError
-from .models import CardPaymentTransaction, CashRegisterMovement, CashRegisterSession, Sale, SaleItem, SalePayment
+from .models import CardPaymentTransaction, CashRegisterMovement, CashRegisterSession, Customer, Sale, SaleItem, SalePayment
 from .services import apply_payment_status
 
 
@@ -178,6 +178,28 @@ class SalesApiTests(TestCase):
         self.assertEqual(response.json()["item_count"], "1.000")
         self.assertEqual(response.json()["average_ticket"], "3.50")
         self.assertEqual(response.json()["top_products"][0]["name"], "Água")
+
+    def test_operator_can_create_and_search_customer_in_own_organization(self):
+        self.client.force_authenticate(self.operator)
+        create_response = self.client.post(reverse("customer-list"), {
+            "name": "Maria da Silva", "phone": "11999990000", "document": "12345678900",
+        }, format="json")
+        self.assertEqual(create_response.status_code, 201, create_response.json())
+        customer = Customer.objects.get()
+        self.assertEqual(customer.organization, self.first_org)
+        search_response = self.client.get(reverse("customer-list"), {"q": "999990000"})
+        self.assertEqual(search_response.status_code, 200, search_response.json())
+        self.assertEqual(search_response.json()["count"], 1)
+
+    def test_sale_rejects_customer_from_another_organization(self):
+        customer = Customer.objects.create(organization=self.second_org, name="Outro cliente")
+        self.client.force_authenticate(self.operator)
+        response = self.client.post(reverse("sale-list"), {
+            "store": self.first_store.id, "customer": customer.id,
+            "payment_method": Sale.PaymentMethod.CASH, "amount_received": "3.50",
+            "items": [{"product": self.product.id, "quantity": "1.000"}],
+        }, format="json")
+        self.assertEqual(response.status_code, 400, response.json())
 
     def test_non_cash_sale_has_no_change(self):
         self.client.force_authenticate(self.operator)

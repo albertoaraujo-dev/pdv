@@ -7,7 +7,7 @@ from apps.accounts.policies import get_allowed_stores
 from apps.catalog.models import Product
 from apps.inventory.services import InsufficientStockError, deduct_stock_for_sale, reserve_stock_for_sale
 
-from .models import CardPaymentTransaction, CashRegisterMovement, CashRegisterSession, Sale, SaleItem
+from .models import CardPaymentTransaction, CashRegisterMovement, CashRegisterSession, Customer, Sale, SaleItem
 
 
 MONEY_QUANT = Decimal("0.01")
@@ -43,6 +43,7 @@ class SaleSerializer(serializers.ModelSerializer):
             "store",
             "cashier",
             "cash_session",
+            "customer",
             "status",
             "total_amount",
             "payment_method",
@@ -53,7 +54,7 @@ class SaleSerializer(serializers.ModelSerializer):
             "items",
             "created_at",
         ]
-        read_only_fields = ["organization", "cashier", "cash_session", "status", "total_amount", "payment_method_label", "amount_received", "change_amount", "client_request_id", "created_at"]
+        read_only_fields = ["organization", "cashier", "cash_session", "customer", "status", "total_amount", "payment_method_label", "amount_received", "change_amount", "client_request_id", "created_at"]
 
 
 class CardPaymentTransactionSerializer(serializers.ModelSerializer):
@@ -66,10 +67,11 @@ class CardPaymentTransactionSerializer(serializers.ModelSerializer):
 class SaleCreateSerializer(serializers.ModelSerializer):
     items = SaleItemInputSerializer(many=True, write_only=True)
     amount_received = serializers.DecimalField(max_digits=12, decimal_places=2)
+    customer = serializers.PrimaryKeyRelatedField(queryset=Customer.objects.all(), required=False, allow_null=True)
 
     class Meta:
         model = Sale
-        fields = ["id", "store", "payment_method", "amount_received", "client_request_id", "items"]
+        fields = ["id", "store", "payment_method", "amount_received", "client_request_id", "customer", "items"]
 
     def calculate_total(self, items):
         total = Decimal("0.00")
@@ -85,6 +87,9 @@ class SaleCreateSerializer(serializers.ModelSerializer):
 
         if not allowed_stores.filter(pk=store.pk).exists():
             raise serializers.ValidationError({"store": "Loja não permitida para este usuário."})
+        customer = attrs.get("customer")
+        if customer and customer.organization_id != store.organization_id:
+            raise serializers.ValidationError({"customer": "Cliente não pertence à organização da loja."})
         if not items:
             raise serializers.ValidationError({"items": "Adicione pelo menos um item à venda."})
 
@@ -244,3 +249,18 @@ class CashRegisterMovementCreateSerializer(serializers.ModelSerializer):
         if not value.strip():
             raise serializers.ValidationError("Informe o motivo da movimentação.")
         return value.strip()
+
+
+class CustomerSerializer(serializers.ModelSerializer):
+    sales_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Customer
+        fields = ["id", "name", "phone", "email", "document", "is_active", "sales_count", "created_at"]
+        read_only_fields = ["id", "is_active", "sales_count", "created_at"]
+
+    def validate_name(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Informe o nome do cliente.")
+        return value
