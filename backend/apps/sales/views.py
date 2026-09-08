@@ -86,7 +86,7 @@ class CashRegisterViewSet(viewsets.ViewSet):
             selected_date = date.fromisoformat(report_date) if report_date else timezone.localdate()
         except ValueError:
             return Response({"date": ["Use a data no formato AAAA-MM-DD."]}, status=status.HTTP_400_BAD_REQUEST)
-        queryset = CashRegisterSession.objects.prefetch_related("movements", "sales").filter(
+        queryset = CashRegisterSession.objects.prefetch_related("movements", "sales__items").filter(
             store__in=self._stores(request), opened_at__date=selected_date,
         )
         store_id = request.query_params.get("store")
@@ -96,10 +96,13 @@ class CashRegisterViewSet(viewsets.ViewSet):
         completed_total = Decimal("0.00")
         cancelled_count = 0
         sales_count = 0
+        completed_count = 0
         opening_total = Decimal("0.00")
         supplies_total = Decimal("0.00")
         withdrawals_total = Decimal("0.00")
         counted_total = Decimal("0.00")
+        item_count = Decimal("0.000")
+        product_totals = {}
         for session in queryset:
             opening_total += session.opening_amount
             supplies_total += sum((movement.amount for movement in session.movements.all() if movement.movement_type == CashRegisterMovement.MovementType.SUPPLY), Decimal("0.00"))
@@ -111,8 +114,14 @@ class CashRegisterViewSet(viewsets.ViewSet):
                 if sale.status == Sale.Status.CANCELLED:
                     cancelled_count += 1
                 elif sale.status == Sale.Status.COMPLETED:
+                    completed_count += 1
                     completed_total += sale.total_amount
                     by_payment[sale.payment_method] = str(Decimal(by_payment.get(sale.payment_method, "0.00")) + sale.total_amount)
+                    for item in sale.items.all():
+                        item_count += item.quantity
+                        product = product_totals.setdefault(item.product_id, {"product": item.product_id, "name": item.product_name, "quantity": Decimal("0.000"), "total": Decimal("0.00")})
+                        product["quantity"] += item.quantity
+                        product["total"] += item.line_total
         expected_total = opening_total + supplies_total - withdrawals_total
         return Response({
             "date": selected_date.isoformat(), "store": int(store_id) if store_id else None,
@@ -121,7 +130,12 @@ class CashRegisterViewSet(viewsets.ViewSet):
             "sales_by_payment": by_payment, "opening_total": str(opening_total),
             "supplies_total": str(supplies_total), "withdrawals_total": str(withdrawals_total),
             "expected_cash_total": str(expected_total), "counted_cash_total": str(counted_total),
-            "variance_total": str(counted_total - expected_total),
+            "variance_total": str(counted_total - expected_total), "item_count": str(item_count),
+            "average_ticket": str((completed_total / completed_count).quantize(Decimal("0.01")) if completed_count else Decimal("0.00")),
+            "top_products": [
+                {"product": value["product"], "name": value["name"], "quantity": str(value["quantity"]), "total": str(value["total"])}
+                for value in sorted(product_totals.values(), key=lambda item: item["total"], reverse=True)[:10]
+            ],
         })
 
     @action(detail=True, methods=["post"], url_path="movements")

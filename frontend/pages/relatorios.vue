@@ -16,6 +16,9 @@ type CashReport = {
   expected_cash_total: string
   counted_cash_total: string
   variance_total: string
+  item_count: string
+  average_ticket: string
+  top_products: Array<{ product: number, name: string, quantity: string, total: string }>
 }
 
 const config = useRuntimeConfig()
@@ -85,11 +88,22 @@ watch([selectedStore, reportDate], loadReport, { immediate: true })
         <article><span>Dinheiro contado</span><strong>{{ money(report.counted_cash_total) }}</strong><small>apos fechamento</small></article>
         <article :class="{ warning: Number(report.variance_total) !== 0 }"><span>Divergencia</span><strong>{{ money(report.variance_total) }}</strong><small>{{ report.cancelled_count }} cancelada(s)</small></article>
       </section>
+      <section class="metric-grid secondary-metrics">
+        <article><span>Itens vendidos</span><strong>{{ Number(report.item_count).toLocaleString('pt-BR') }}</strong></article>
+        <article><span>Ticket medio</span><strong>{{ money(report.average_ticket) }}</strong></article>
+      </section>
       <section class="report-card">
         <h2>Vendas por forma de pagamento</h2>
         <dl>
           <div v-for="(amount, method) in report.sales_by_payment" :key="method"><dt>{{ paymentLabels[method] || method }}</dt><dd>{{ money(amount) }}</dd></div>
           <div v-if="!Object.keys(report.sales_by_payment).length" class="muted">Nenhuma venda concluida no periodo.</div>
+        </dl>
+      </section>
+      <section class="report-card">
+        <h2>Produtos mais vendidos</h2>
+        <div v-if="!report.top_products.length" class="muted">Nenhum produto vendido no periodo.</div>
+        <dl v-else>
+          <div v-for="product in report.top_products" :key="product.product"><dt>{{ product.name }} <small>{{ Number(product.quantity).toLocaleString('pt-BR') }} item(ns)</small></dt><dd>{{ money(product.total) }}</dd></div>
         </dl>
       </section>
     </template>

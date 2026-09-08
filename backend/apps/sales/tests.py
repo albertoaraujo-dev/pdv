@@ -175,6 +175,9 @@ class SalesApiTests(TestCase):
         self.assertEqual(response.json()["completed_total"], "3.50")
         self.assertEqual(response.json()["sales_by_payment"][Sale.PaymentMethod.CASH], "3.50")
         self.assertEqual(response.json()["expected_cash_total"], "60.00")
+        self.assertEqual(response.json()["item_count"], "1.000")
+        self.assertEqual(response.json()["average_ticket"], "3.50")
+        self.assertEqual(response.json()["top_products"][0]["name"], "Água")
 
     def test_non_cash_sale_has_no_change(self):
         self.client.force_authenticate(self.operator)
