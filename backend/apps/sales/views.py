@@ -199,6 +199,24 @@ class CustomerViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(organization=get_user_organization(self.request.user))
 
+    @action(detail=True, methods=["get"], url_path="history")
+    def history(self, request, pk=None):
+        try:
+            customer = self.get_object()
+        except Customer.DoesNotExist:
+            return Response({"detail": "Cliente não encontrado."}, status=status.HTTP_404_NOT_FOUND)
+        sales = Sale.objects.select_related("store", "cashier").prefetch_related("items").filter(customer=customer)
+        completed = sales.filter(status=Sale.Status.COMPLETED)
+        total = sum((sale.total_amount for sale in completed), Decimal("0.00"))
+        return Response({
+            "customer": CustomerSerializer(customer).data,
+            "sales_count": sales.count(),
+            "completed_sales_count": completed.count(),
+            "completed_total": str(total),
+            "last_sale_at": completed.values_list("created_at", flat=True).first(),
+            "sales": SaleSerializer(sales[:50], many=True).data,
+        })
+
 
 class SaleViewSet(viewsets.ModelViewSet):
     permission_classes = [CanUseSalesApi]

@@ -201,6 +201,25 @@ class SalesApiTests(TestCase):
         }, format="json")
         self.assertEqual(response.status_code, 400, response.json())
 
+    def test_customer_history_is_tenant_scoped_and_summarizes_completed_sales(self):
+        customer = Customer.objects.create(organization=self.first_org, name="Cliente recorrente")
+        self.client.force_authenticate(self.operator)
+        sale_response = self.client.post(reverse("sale-list"), {
+            "store": self.first_store.id, "customer": customer.id,
+            "payment_method": Sale.PaymentMethod.CASH, "amount_received": "7.00",
+            "items": [{"product": self.product.id, "quantity": "2.000"}],
+        }, format="json")
+        self.assertEqual(sale_response.status_code, 201, sale_response.json())
+        response = self.client.get(reverse("customer-history", kwargs={"pk": customer.pk}))
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["completed_sales_count"], 1)
+        self.assertEqual(response.json()["completed_total"], "7.00")
+        self.assertEqual(len(response.json()["sales"]), 1)
+
+        other_customer = Customer.objects.create(organization=self.second_org, name="Outro")
+        denied = self.client.get(reverse("customer-history", kwargs={"pk": other_customer.pk}))
+        self.assertEqual(denied.status_code, 404)
+
     def test_non_cash_sale_has_no_change(self):
         self.client.force_authenticate(self.operator)
 

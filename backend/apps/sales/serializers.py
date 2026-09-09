@@ -116,6 +116,7 @@ class SaleCreateSerializer(serializers.ModelSerializer):
         amount_received = validated_data["amount_received"]
         payment_method = validated_data.get("payment_method", Sale.PaymentMethod.CASH)
         client_request_id = validated_data.get("client_request_id")
+        customer = validated_data.get("customer")
         cash_session = CashRegisterSession.objects.filter(
             organization=store.organization, store=store, status=CashRegisterSession.Status.OPEN,
         ).first()
@@ -130,6 +131,7 @@ class SaleCreateSerializer(serializers.ModelSerializer):
             store=store,
             cashier=request.user,
             cash_session=cash_session,
+            customer=customer,
             status=Sale.Status.PENDING_PAYMENT if payment_method == Sale.PaymentMethod.PIX_ABACATEPAY else Sale.Status.COMPLETED,
             payment_method=payment_method,
             amount_received=amount_received,
