@@ -178,6 +178,8 @@ class SalesApiTests(TestCase):
         self.assertEqual(response.json()["item_count"], "1.000")
         self.assertEqual(response.json()["average_ticket"], "3.50")
         self.assertEqual(response.json()["top_products"][0]["name"], "Água")
+        self.assertEqual(response.json()["by_store"][0]["store_name"], "Matriz")
+        self.assertEqual(response.json()["by_store"][0]["completed_total"], "3.50")
 
     def test_operator_can_create_and_search_customer_in_own_organization(self):
         self.client.force_authenticate(self.operator)

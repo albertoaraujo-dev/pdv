@@ -19,6 +19,7 @@ type CashReport = {
   item_count: string
   average_ticket: string
   top_products: Array<{ product: number, name: string, quantity: string, total: string }>
+  by_store: Array<{ store: number, store_name: string, sales_count: number, completed_total: string, expected_cash: string, counted_cash: string, variance: string }>
 }
 
 const config = useRuntimeConfig()
@@ -91,6 +92,12 @@ watch([selectedStore, reportDate], loadReport, { immediate: true })
       <section class="metric-grid secondary-metrics">
         <article><span>Itens vendidos</span><strong>{{ Number(report.item_count).toLocaleString('pt-BR') }}</strong></article>
         <article><span>Ticket medio</span><strong>{{ money(report.average_ticket) }}</strong></article>
+      </section>
+      <section class="report-card">
+        <h2>Resumo por loja</h2>
+        <dl>
+          <div v-for="store in report.by_store" :key="store.store"><dt>{{ store.store_name }} <small>{{ store.sales_count }} venda(s)</small></dt><dd>{{ money(store.completed_total) }} · divergência {{ money(store.variance) }}</dd></div>
+        </dl>
       </section>
       <section class="report-card">
         <h2>Vendas por forma de pagamento</h2>

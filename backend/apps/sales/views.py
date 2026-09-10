@@ -86,7 +86,7 @@ class CashRegisterViewSet(viewsets.ViewSet):
             selected_date = date.fromisoformat(report_date) if report_date else timezone.localdate()
         except ValueError:
             return Response({"date": ["Use a data no formato AAAA-MM-DD."]}, status=status.HTTP_400_BAD_REQUEST)
-        queryset = CashRegisterSession.objects.prefetch_related("movements", "sales__items").filter(
+        queryset = CashRegisterSession.objects.select_related("store").prefetch_related("movements", "sales__items").filter(
             store__in=self._stores(request), opened_at__date=selected_date,
         )
         store_id = request.query_params.get("store")
@@ -103,19 +103,27 @@ class CashRegisterViewSet(viewsets.ViewSet):
         counted_total = Decimal("0.00")
         item_count = Decimal("0.000")
         product_totals = {}
+        store_totals = {}
         for session in queryset:
+            store = store_totals.setdefault(session.store_id, {"store": session.store_id, "store_name": session.store.name, "sales_count": 0, "completed_total": Decimal("0.00"), "expected_cash": Decimal("0.00"), "counted_cash": Decimal("0.00")})
             opening_total += session.opening_amount
-            supplies_total += sum((movement.amount for movement in session.movements.all() if movement.movement_type == CashRegisterMovement.MovementType.SUPPLY), Decimal("0.00"))
-            withdrawals_total += sum((movement.amount for movement in session.movements.all() if movement.movement_type == CashRegisterMovement.MovementType.WITHDRAWAL), Decimal("0.00"))
+            session_supplies = sum((movement.amount for movement in session.movements.all() if movement.movement_type == CashRegisterMovement.MovementType.SUPPLY), Decimal("0.00"))
+            session_withdrawals = sum((movement.amount for movement in session.movements.all() if movement.movement_type == CashRegisterMovement.MovementType.WITHDRAWAL), Decimal("0.00"))
+            supplies_total += session_supplies
+            withdrawals_total += session_withdrawals
+            store["expected_cash"] += session.opening_amount + session_supplies - session_withdrawals
             if session.closing_amount is not None:
                 counted_total += session.closing_amount
+                store["counted_cash"] += session.closing_amount
             for sale in session.sales.all():
                 sales_count += 1
+                store["sales_count"] += 1
                 if sale.status == Sale.Status.CANCELLED:
                     cancelled_count += 1
                 elif sale.status == Sale.Status.COMPLETED:
                     completed_count += 1
                     completed_total += sale.total_amount
+                    store["completed_total"] += sale.total_amount
                     by_payment[sale.payment_method] = str(Decimal(by_payment.get(sale.payment_method, "0.00")) + sale.total_amount)
                     for item in sale.items.all():
                         item_count += item.quantity
@@ -135,6 +143,10 @@ class CashRegisterViewSet(viewsets.ViewSet):
             "top_products": [
                 {"product": value["product"], "name": value["name"], "quantity": str(value["quantity"]), "total": str(value["total"])}
                 for value in sorted(product_totals.values(), key=lambda item: item["total"], reverse=True)[:10]
+            ],
+            "by_store": [
+                {**value, "completed_total": str(value["completed_total"]), "expected_cash": str(value["expected_cash"]), "counted_cash": str(value["counted_cash"]), "variance": str(value["counted_cash"] - value["expected_cash"])}
+                for value in sorted(store_totals.values(), key=lambda item: item["store_name"])
             ],
         })
 
