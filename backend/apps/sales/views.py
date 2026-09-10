@@ -186,6 +186,8 @@ class CustomerViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = Customer.objects.filter(is_active=True).annotate(sales_count=models.Count("sales")).order_by("name", "id")
+        if self.request.query_params.get("include_inactive") == "1" and can_access_admin(self.request.user):
+            queryset = Customer.objects.all().annotate(sales_count=models.Count("sales")).order_by("name", "id")
         user = self.request.user
         if user.is_superuser:
             return queryset
@@ -216,6 +218,24 @@ class CustomerViewSet(viewsets.ModelViewSet):
             "last_sale_at": completed.values_list("created_at", flat=True).first(),
             "sales": SaleSerializer(sales[:50], many=True).data,
         })
+
+    @action(detail=True, methods=["post"], url_path="set-active")
+    def set_active(self, request, pk=None):
+        if not can_access_admin(request.user):
+            return Response({"detail": "Somente gerente ou administrador pode alterar o status do cliente."}, status=status.HTTP_403_FORBIDDEN)
+        customer_queryset = Customer.objects.all()
+        if not request.user.is_superuser:
+            customer_queryset = customer_queryset.filter(organization=get_user_organization(request.user))
+        try:
+            customer = customer_queryset.get(pk=pk)
+        except Customer.DoesNotExist:
+            return Response({"detail": "Cliente não encontrado."}, status=status.HTTP_404_NOT_FOUND)
+        active = request.data.get("is_active")
+        if not isinstance(active, bool):
+            return Response({"is_active": ["Informe true ou false."]}, status=status.HTTP_400_BAD_REQUEST)
+        customer.is_active = active
+        customer.save(update_fields=["is_active", "updated_at"])
+        return Response(CustomerSerializer(customer).data)
 
 
 class SaleViewSet(viewsets.ModelViewSet):

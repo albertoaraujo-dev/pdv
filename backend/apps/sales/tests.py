@@ -220,6 +220,19 @@ class SalesApiTests(TestCase):
         denied = self.client.get(reverse("customer-history", kwargs={"pk": other_customer.pk}))
         self.assertEqual(denied.status_code, 404)
 
+    def test_only_manager_can_archive_customer_without_deleting_history(self):
+        customer = Customer.objects.create(organization=self.first_org, name="Cliente arquivado")
+        self.client.force_authenticate(self.operator)
+        denied = self.client.post(reverse("customer-set-active", kwargs={"pk": customer.pk}), {"is_active": False}, format="json")
+        self.assertEqual(denied.status_code, 403)
+        self.client.force_authenticate(self.manager)
+        archived = self.client.post(reverse("customer-set-active", kwargs={"pk": customer.pk}), {"is_active": False}, format="json")
+        self.assertEqual(archived.status_code, 200, archived.json())
+        self.assertFalse(Customer.objects.get(pk=customer.pk).is_active)
+        self.assertEqual(self.client.get(reverse("customer-list")).json()["count"], 0)
+        restored = self.client.post(reverse("customer-set-active", kwargs={"pk": customer.pk}), {"is_active": True}, format="json")
+        self.assertEqual(restored.status_code, 200, restored.json())
+
     def test_non_cash_sale_has_no_change(self):
         self.client.force_authenticate(self.operator)
 

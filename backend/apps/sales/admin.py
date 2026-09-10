@@ -3,7 +3,7 @@ from unfold.admin import ModelAdmin, TabularInline
 
 from apps.accounts.policies import can_access_admin, get_allowed_stores, get_user_organization
 
-from .models import CardPaymentTransaction, CashRegisterMovement, CashRegisterSession, Sale, SaleItem
+from .models import CardPaymentTransaction, CashRegisterMovement, CashRegisterSession, Customer, Sale, SaleItem
 
 
 class SaleItemInline(TabularInline):
@@ -86,6 +86,36 @@ class SaleItemAdmin(ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return request.user.is_superuser
+
+
+@admin.register(Customer)
+class CustomerAdmin(ModelAdmin):
+    list_display = ["name", "phone", "email", "document", "is_active", "created_at"]
+    list_filter = ["is_active", "created_at"]
+    search_fields = ["name", "phone", "email", "document"]
+    readonly_fields = ["organization", "created_at", "updated_at"]
+
+    def get_queryset(self, request):
+        queryset = super().get_queryset(request)
+        if request.user.is_superuser:
+            return queryset
+        organization = get_user_organization(request.user)
+        return queryset.filter(organization=organization) if organization else queryset.none()
+
+    def has_module_permission(self, request):
+        return can_access_admin(request.user)
+
+    def has_view_permission(self, request, obj=None):
+        return can_access_admin(request.user) and (obj is None or self.get_queryset(request).filter(pk=obj.pk).exists())
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return can_access_admin(request.user)
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(CardPaymentTransaction)

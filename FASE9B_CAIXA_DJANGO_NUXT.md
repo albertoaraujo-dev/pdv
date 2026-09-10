@@ -16,6 +16,8 @@ obrigatoria para criar vendas existentes.
 - Novas vendas registram a sessao aberta da loja quando existir.
 - Resumo do caixa inclui total vendido e totais por forma de pagamento.
 - Relatorio diario por loja com vendas, cancelamentos, pagamentos e divergencia.
+- Clientes podem ser arquivados sem apagar seu historico de vendas.
+- Apenas gerente ou administrador pode arquivar ou reativar clientes.
 - Endpoints protegidos pela mesma politica do modulo de vendas.
 - Registros somente leitura no Admin.
 - Painel compacto integrado ao PDV para operar o caixa da loja selecionada.
@@ -57,6 +59,8 @@ obrigatoria para criar vendas existentes.
    resumo do caixa e na forma de pagamento correta.
 10. Consultar o relatorio diario e confirmar totais de vendas, dinheiro esperado
     e divergencia.
+11. Arquivar um cliente pelo endpoint administrativo e confirmar que ele sai da
+    busca operacional, sem desaparecer das vendas antigas.
 
 Nao commitar esta fase antes da aprovacao manual dos endpoints e regras de
 abertura, movimentacao e fechamento.
