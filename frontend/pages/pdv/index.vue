@@ -114,6 +114,10 @@ const paymentMethod = ref('cash')
 const amountReceived = ref('')
 const customerSearch = ref('')
 const selectedCustomerId = ref<number | null>(null)
+const showCustomerForm = ref(false)
+const newCustomerName = ref('')
+const newCustomerPhone = ref('')
+const isCreatingCustomer = ref(false)
 const saleError = ref('')
 const saleSuccess = ref('')
 const searchMessage = ref('')
@@ -231,6 +235,35 @@ watch(selectedStoreId, async (value) => {
 watch(customerSearch, async () => {
   if (isPdvAvailable.value) await refreshCustomers()
 })
+
+function startCustomerCreation() {
+  newCustomerName.value = customerSearch.value.trim()
+  showCustomerForm.value = true
+}
+
+async function createCustomer() {
+  if (!newCustomerName.value.trim() || isCreatingCustomer.value) return
+  isCreatingCustomer.value = true
+  cashError.value = ''
+  try {
+    const csrf = await $fetch<{ csrfToken: string }>(`${apiBase}/api/auth/csrf/`, { credentials: 'include' })
+    const customer = await $fetch<Customer>(`${apiBase}/api/sales/customers/`, {
+      method: 'POST', credentials: 'include', headers: { 'X-CSRFToken': csrf.csrfToken },
+      body: { name: newCustomerName.value.trim(), phone: newCustomerPhone.value.trim() }
+    })
+    selectedCustomerId.value = customer.id
+    customerSearch.value = customer.name
+    showCustomerForm.value = false
+    newCustomerName.value = ''
+    newCustomerPhone.value = ''
+    saleSuccess.value = 'Cliente cadastrado e selecionado.'
+    await refreshCustomers()
+  } catch (error) {
+    saleError.value = getFetchErrorMessage(error)
+  } finally {
+    isCreatingCustomer.value = false
+  }
+}
 
 watch(search, (value) => {
   searchMessage.value = ''
@@ -925,6 +958,19 @@ function money(value: number | string) {
           </option>
         </select>
         <small v-if="isLoadingCustomers" class="muted">Buscando clientes...</small>
+        <button v-if="!cartLocked && customerSearch && !isLoadingCustomers && !customers?.results.length" type="button" class="secondary-action" @click="startCustomerCreation">Cadastrar novo cliente</button>
+        <div v-if="showCustomerForm" class="quick-customer-form">
+          <label class="store-field">Nome
+            <input v-model="newCustomerName" :disabled="isCreatingCustomer" placeholder="Nome completo">
+          </label>
+          <label class="store-field">Telefone
+            <input v-model="newCustomerPhone" :disabled="isCreatingCustomer" inputmode="tel" placeholder="(00) 00000-0000">
+          </label>
+          <div class="quick-customer-actions">
+            <button type="button" :disabled="isCreatingCustomer" @click="createCustomer">{{ isCreatingCustomer ? 'Cadastrando...' : 'Cadastrar e selecionar' }}</button>
+            <button type="button" class="secondary-action" :disabled="isCreatingCustomer" @click="showCustomerForm = false">Cancelar</button>
+          </div>
+        </div>
         <label class="store-field">
           Forma de pagamento
           <select v-model="paymentMethod" :disabled="cartLocked">
@@ -1515,6 +1561,26 @@ dd {
 .cash-close-form {
   padding-top: 14px;
   border-top: 1px solid #bae6fd;
+}
+
+.secondary-action {
+  background: #e0f2fe;
+  color: #075985;
+}
+
+.quick-customer-form {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #bae6fd;
+  border-radius: 12px;
+  background: #f0f9ff;
+}
+
+.quick-customer-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 @media (min-width: 1100px) {
