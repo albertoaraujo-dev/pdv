@@ -233,6 +233,17 @@ class SalesApiTests(TestCase):
         restored = self.client.post(reverse("customer-set-active", kwargs={"pk": customer.pk}), {"is_active": True}, format="json")
         self.assertEqual(restored.status_code, 200, restored.json())
 
+    def test_customer_history_only_shows_sales_from_allowed_stores(self):
+        other_store = Store.objects.create(organization=self.first_org, name="Outra loja", code="M02")
+        other_product = Product.objects.create(organization=self.first_org, category=self.category, unit=self.unit, name="Cafe", sku="CAFE-001", price="2.00")
+        Stock.objects.create(organization=self.first_org, store=other_store, product=other_product, quantity="5.000")
+        customer = Customer.objects.create(organization=self.first_org, name="Cliente multi loja")
+        Sale.objects.create(organization=self.first_org, store=other_store, cashier=self.operator, customer=customer, total_amount="2.00")
+        self.client.force_authenticate(self.operator)
+        response = self.client.get(reverse("customer-history", kwargs={"pk": customer.pk}))
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["sales_count"], 0)
+
     def test_non_cash_sale_has_no_change(self):
         self.client.force_authenticate(self.operator)
 

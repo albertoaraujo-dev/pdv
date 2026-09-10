@@ -208,6 +208,8 @@ class CustomerViewSet(viewsets.ModelViewSet):
         except Customer.DoesNotExist:
             return Response({"detail": "Cliente não encontrado."}, status=status.HTTP_404_NOT_FOUND)
         sales = Sale.objects.select_related("store", "cashier").prefetch_related("items").filter(customer=customer)
+        if not request.user.is_superuser:
+            sales = sales.filter(store__in=get_allowed_stores(request.user))
         completed = sales.filter(status=Sale.Status.COMPLETED)
         total = sum((sale.total_amount for sale in completed), Decimal("0.00"))
         return Response({
