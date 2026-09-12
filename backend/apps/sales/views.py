@@ -1,10 +1,12 @@
 from django.conf import settings
+import csv
 from datetime import date
 from decimal import Decimal
 
 from django.db import models, transaction
 from django.utils import timezone
 from django.core.exceptions import PermissionDenied, ValidationError
+from django.http import HttpResponse
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -286,6 +288,24 @@ class SaleViewSet(viewsets.ModelViewSet):
         if params.get("date_to"):
             queryset = queryset.filter(created_at__date__lte=params["date_to"])
         return queryset
+
+    @action(detail=False, methods=["get"], url_path="export")
+    def export(self, request):
+        response = HttpResponse(content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = 'attachment; filename="vendas.csv"'
+        response.write("\ufeff")
+        writer = csv.writer(response)
+        writer.writerow(["Venda", "Data", "Loja", "Status", "Pagamento", "Total"])
+        for sale in self.get_queryset().prefetch_related(None).iterator():
+            writer.writerow([
+                sale.pk,
+                timezone.localtime(sale.created_at).strftime("%Y-%m-%d %H:%M:%S"),
+                sale.store.name,
+                sale.get_status_display(),
+                sale.get_payment_method_display(),
+                sale.total_amount,
+            ])
+        return response
 
     @action(detail=True, methods=["get"], url_path="transaction")
     def transaction(self, request, pk=None):

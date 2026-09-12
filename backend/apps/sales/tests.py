@@ -258,6 +258,17 @@ class SalesApiTests(TestCase):
         self.assertEqual(response.status_code, 200, response.json())
         self.assertEqual(response.json()["count"], 1)
 
+    def test_sales_export_applies_filters_and_store_scope(self):
+        self.client.force_authenticate(self.operator)
+        self.client.post(reverse("sale-list"), {
+            "store": self.first_store.id, "payment_method": Sale.PaymentMethod.CASH, "amount_received": "3.50",
+            "items": [{"product": self.product.id, "quantity": "1.000"}],
+        }, format="json")
+        response = self.client.get(reverse("sale-export"), {"payment_method": Sale.PaymentMethod.CASH})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Venda,Data,Loja,Status,Pagamento,Total", response.content.decode("utf-8-sig"))
+        self.assertIn(self.first_store.name, response.content.decode("utf-8-sig"))
+
     def test_non_cash_sale_has_no_change(self):
         self.client.force_authenticate(self.operator)
 
