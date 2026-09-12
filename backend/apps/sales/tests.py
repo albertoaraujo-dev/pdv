@@ -246,6 +246,18 @@ class SalesApiTests(TestCase):
         self.assertEqual(response.status_code, 200, response.json())
         self.assertEqual(response.json()["sales_count"], 0)
 
+    def test_sales_list_supports_operational_filters(self):
+        self.client.force_authenticate(self.operator)
+        for method in (Sale.PaymentMethod.CASH, Sale.PaymentMethod.PIX_MANUAL):
+            response = self.client.post(reverse("sale-list"), {
+                "store": self.first_store.id, "payment_method": method, "amount_received": "3.50",
+                "items": [{"product": self.product.id, "quantity": "1.000"}],
+            }, format="json")
+            self.assertEqual(response.status_code, 201, response.json())
+        response = self.client.get(reverse("sale-list"), {"payment_method": Sale.PaymentMethod.PIX_MANUAL})
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["count"], 1)
+
     def test_non_cash_sale_has_no_change(self):
         self.client.force_authenticate(self.operator)
 

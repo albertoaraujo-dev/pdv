@@ -267,14 +267,25 @@ class SaleViewSet(viewsets.ModelViewSet):
         return normalized if normalized in SalePayment.Status.values else fallback
 
     def get_queryset(self):
-        queryset = Sale.objects.select_related("organization", "store", "cashier").prefetch_related("items")
+        queryset = Sale.objects.select_related("organization", "store", "cashier", "customer").prefetch_related("items")
         user = self.request.user
-        if user.is_superuser:
-            return queryset
-        organization = get_user_organization(user)
-        if not organization:
-            return queryset.none()
-        return queryset.filter(organization=organization, store__in=get_allowed_stores(user))
+        if not user.is_superuser:
+            organization = get_user_organization(user)
+            if not organization:
+                return queryset.none()
+            queryset = queryset.filter(organization=organization, store__in=get_allowed_stores(user))
+        params = self.request.query_params
+        if params.get("store"):
+            queryset = queryset.filter(store_id=params["store"])
+        if params.get("status") in Sale.Status.values:
+            queryset = queryset.filter(status=params["status"])
+        if params.get("payment_method") in Sale.PaymentMethod.values:
+            queryset = queryset.filter(payment_method=params["payment_method"])
+        if params.get("date_from"):
+            queryset = queryset.filter(created_at__date__gte=params["date_from"])
+        if params.get("date_to"):
+            queryset = queryset.filter(created_at__date__lte=params["date_to"])
+        return queryset
 
     @action(detail=True, methods=["get"], url_path="transaction")
     def transaction(self, request, pk=None):

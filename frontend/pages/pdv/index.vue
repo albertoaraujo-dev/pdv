@@ -777,6 +777,7 @@ function money(value: number | string) {
         <NuxtLink class="billing-link" to="/billing">Consultar billing</NuxtLink>
         <NuxtLink class="billing-link" to="/relatorios">Fechamento diario</NuxtLink>
         <NuxtLink class="billing-link" to="/clientes">Clientes</NuxtLink>
+        <NuxtLink class="billing-link" to="/vendas">Vendas</NuxtLink>
         <button type="button" :class="{ 'button-loading': isLoggingOut }" :disabled="isLoggingOut || isClosingSale" @click="logout">
           {{ isLoggingOut ? 'Saindo...' : 'Sair do PDV' }}
         </button>
