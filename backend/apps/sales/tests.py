@@ -266,7 +266,7 @@ class SalesApiTests(TestCase):
         }, format="json")
         response = self.client.get(reverse("sale-export"), {"payment_method": Sale.PaymentMethod.CASH})
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Venda,Data,Loja,Status,Pagamento,Total", response.content.decode("utf-8-sig"))
+        self.assertIn("Venda,Data,Loja,Código da loja,Operador,Cliente,Status,Pagamento,Total", response.content.decode("utf-8-sig"))
         self.assertIn(self.first_store.name, response.content.decode("utf-8-sig"))
 
     def test_non_cash_sale_has_no_change(self):

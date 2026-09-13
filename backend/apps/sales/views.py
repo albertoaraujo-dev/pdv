@@ -295,12 +295,15 @@ class SaleViewSet(viewsets.ModelViewSet):
         response["Content-Disposition"] = 'attachment; filename="vendas.csv"'
         response.write("\ufeff")
         writer = csv.writer(response)
-        writer.writerow(["Venda", "Data", "Loja", "Status", "Pagamento", "Total"])
+        writer.writerow(["Venda", "Data", "Loja", "Código da loja", "Operador", "Cliente", "Status", "Pagamento", "Total"])
         for sale in self.get_queryset().prefetch_related(None).iterator():
             writer.writerow([
                 sale.pk,
                 timezone.localtime(sale.created_at).strftime("%Y-%m-%d %H:%M:%S"),
                 sale.store.name,
+                sale.store.code,
+                sale.cashier.get_full_name() or sale.cashier.username,
+                sale.customer.name if sale.customer else "",
                 sale.get_status_display(),
                 sale.get_payment_method_display(),
                 sale.total_amount,
